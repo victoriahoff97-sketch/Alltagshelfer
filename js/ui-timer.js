@@ -53,14 +53,30 @@
       let gesperrt = false;
       const einmal = fn => () => { if (gesperrt) return; gesperrt = true; fn(); };
 
-      const flaeche = h('div', { class: 'zeit-flaeche' });
+      // Die Zeit läuft als Ring um das Wesen, das mitmacht. Am Ende jubelt es.
+      const UMFANG = 553;
+      const buehne = h('div', { class: 'zeitbuehne', 'aria-hidden': 'true' });
+      const wesenbild = zustand => '<g transform="translate(40 34)"><g class="wesen' + (zustand === 'viel' ? ' jubelt' : '') + '">' +
+        AH.wesenbild.innen(app.state.wesen, zustand) + '</g></g>';
+      buehne.innerHTML = '<svg viewBox="0 0 200 200"><circle class="zeit-bahn" cx="100" cy="100" r="88"/>' +
+        '<circle class="zeit-ring" cx="100" cy="100" r="88" stroke-dasharray="' + UMFANG + '" transform="rotate(-90 100 100)"/>' +
+        '<g class="zeit-wesen">' + wesenbild('eifer') + '</g></svg>';
+      const ring = buehne.querySelector('.zeit-ring');
+      const uhr = h('p', { class: 'zeit-uhr', role: 'timer' });
       const rest = h('p', { class: 'leise zeit-text', 'aria-live': 'polite' });
+      let phase = null;
       const tick = () => {
-        const anteil = Math.max(0, 1 - (Date.now() - lauf.start) / dauerMs);
-        flaeche.style.transform = 'scale(' + anteil.toFixed(3) + ')';
-        rest.textContent = anteil > 0
-          ? 'noch etwa ' + Math.max(1, Math.ceil(anteil * g.min)) + ' Min'
-          : 'Die Zeit ist um. Mach in Ruhe fertig.';
+        const r = AH.zeit.rest(lauf.start, dauerMs, Date.now());
+        ring.style.strokeDashoffset = (UMFANG * (1 - r.anteil)).toFixed(1);
+        uhr.textContent = r.text;
+        if (r.phase === phase) return;
+        // beim ersten Zeichnen einer schon abgelaufenen Zeit nicht noch einmal brummen
+        if (r.phase === 'um' && phase !== null && root.navigator.vibrate) root.navigator.vibrate([200, 120, 200]);
+        phase = r.phase;
+        buehne.dataset.phase = phase;
+        if (phase === 'um') buehne.querySelector('.zeit-wesen').innerHTML = wesenbild('viel');
+        rest.textContent = { laeuft: 'Ich mach mit.', endspurt: 'Gleich geschafft.', um: 'Die Zeit ist um. Mach in Ruhe fertig.' }[phase];
+        if (schrittliste) rest.textContent = phase === 'um' ? 'Die Zeit ist um. Mach in Ruhe fertig.' : 'noch etwa ' + Math.max(1, Math.ceil(r.sek / 60)) + ' Min';
       };
 
       // Schritte zum Abhaken; die Haken überstehen ein Neuzeichnen.
@@ -93,7 +109,8 @@
           h('h1', { class: 'karte-text' }, g.text),
           aufgabe.fertig ? h('p', { class: 'karte-zusatz' }, aufgabe.fertig) : null,
           schrittliste,
-          schrittliste ? null : h('div', { class: 'zeit' }, flaeche),
+          schrittliste ? null : buehne,
+          schrittliste ? null : uhr,
           rest,
           h('div', { class: 'reihe' },
             h('button', { class: 'knopf knopf-haupt', onclick: einmal(() => {
@@ -114,7 +131,7 @@
         parkbereich);
 
       tick();
-      takt = setInterval(tick, 1000);
+      takt = setInterval(tick, 250);
     },
   };
 })(typeof globalThis !== 'undefined' ? globalThis : this);

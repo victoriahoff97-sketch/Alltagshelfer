@@ -8,7 +8,9 @@
   const RUNDEN_TEXT = { morgens: 'morgens', abends: 'abends', nacht: 'abends' };
   const an = (el, ...kinder) => el.append(...kinder.flat(2).filter(Boolean));
   let ohneOffen = false; // „Lieber etwas Neues“ gilt, bis etwas gestartet oder erledigt wurde
-  let meldung = null;    // ein Satz nach dem Reinwerfen
+  let meldung = null;    // { text, mussId }: ein Satz nach dem Reinwerfen, mit Knopf, um aus „Will“ ein „Muss“ zu machen
+  let gewaehlt = null;   // aus „Heute dran“ ausgesucht; gilt, bis etwas gestartet, erledigt oder weggelegt wird
+  const Sprache = root.SpeechRecognition || root.webkitSpeechRecognition;
 
   // Die Runde, in der eine Aufgabe gerade erledigt würde (auch für Geparktes).
   function rundeVon(aufgabe) {
@@ -21,6 +23,7 @@
   function starte(aufgabe, groesse) {
     if (!AH.offen.kannStarten(app.state, aufgabe.id)) return fragenWegenOffen();
     ohneOffen = false;
+    gewaehlt = null;
     // tag: der Tag, zu dem die Runde gehört, auch wenn „Geschafft“ erst nach 4 Uhr früh kommt
     app.laeuft = { aufgabeId: aufgabe.id, groesse, slot: rundeVon(aufgabe), tag: app.heute(), start: Date.now(), haken: [] };
     app.state = AH.tagesform.ruhe(app.state);
@@ -60,22 +63,24 @@
     const g = AH.aufgaben.ansicht(aufgabe, groesse, app.state, app.heute());
     const b = app.bereich(aufgabe.bereich);
     const anders = () => {
+      gewaehlt = null;
       let s = AH.auswahl.gezeigt(app.state, aufgabe);
       s = AH.auswahl.weiter(s, AH.auswahl.schluessel(aufgabe, slot));
       // „Gleich“ bei festen Aufgaben sagt nichts über die Tagesform
       app.setze(aufgabe.fest ? AH.tagesform.ruhe(s) : AH.tagesform.anders(s));
     };
     const heuteNicht = () => {
+      gewaehlt = null;
       app.setze(AH.tagesform.ruhe(AH.auswahl.heuteNicht(AH.auswahl.gezeigt(app.state, aufgabe), AH.auswahl.schluessel(aufgabe, slot))));
       app.frage('Gerade schlecht?', [
         { text: 'Ja, heute nur Kleines', haupt: true, tu: () => app.setze(AH.tagesform.schlecht(app.state)) },
         { text: 'Nein, nur diese Sache nicht' },
       ]);
     };
-    const abgenommen = () => app.setze(AH.auswahl.festZurueck(AH.tagesform.ruhe(
-      AH.aufgaben.abgenommen(AH.auswahl.gezeigt(app.state, aufgabe), aufgabe.id, app.heute(), slot))));
-    const nochNicht = () => app.setze(AH.tagesform.ruhe(
-      AH.aufgaben.nochNicht(AH.auswahl.gezeigt(app.state, aufgabe), aufgabe.id, app.heute())));
+    const abgenommen = () => (gewaehlt = null, app.setze(AH.auswahl.festZurueck(AH.tagesform.ruhe(
+      AH.aufgaben.abgenommen(AH.auswahl.gezeigt(app.state, aufgabe), aufgabe.id, app.heute(), slot)))));
+    const nochNicht = () => (gewaehlt = null, app.setze(AH.tagesform.ruhe(
+      AH.aufgaben.nochNicht(AH.auswahl.gezeigt(app.state, aufgabe), aufgabe.id, app.heute()))));
 
     // Die Farbe und das Maskottchen zeigen den Bereich, die Marke nennt die Aufgabe.
     const marke = aufgabe.titel + (g.variante ? ' · ' + g.variante : '') + (slot ? ' · ' + RUNDEN_TEXT[slot] : '') + (aufgabe.art === 'muss' ? ' · Muss' : '');
@@ -153,6 +158,65 @@
         o.satz ? h('span', { class: 'leise' }, o.satz) : null)));
   }
 
+  // Alles, was heute ansteht, zum Aufklappen. Ein Tipp holt die Aufgabe auf die Karte.
+  function heuteListe(gezeigt) {
+    const liste = AH.auswahl.heuteDran(app.state, { stunde: app.stunde() });
+    if (liste.length < 2) return null;
+    return h('details', { class: 'heute-liste' },
+      h('summary', {}, 'Heute dran · ' + liste.length),
+      h('div', { class: 'heute-reihen' }, liste.map(x => {
+        const g = AH.aufgaben.ansicht(x.aufgabe, x.groesse, app.state, app.heute());
+        const eintrag = AH.auswahl.schluessel(x.aufgabe, x.slot);
+        return h('button', {
+          class: 'heute-eintrag b-' + app.bereich(x.aufgabe.bereich).farbe,
+          'aria-current': eintrag === gezeigt ? 'true' : null,
+          onclick: () => {
+            gewaehlt = eintrag;
+            app.setze(AH.tagesform.ruhe(app.state));
+            root.scrollTo(0, 0);
+          },
+        }, h('span', { class: 'heute-text' }, x.aufgabe.titel + (x.slot ? ' · ' + RUNDEN_TEXT[x.slot] : '')),
+          g.min ? h('span', { class: 'heute-min' }, g.min + ' Min') : null);
+      })));
+  }
+
+  // Reinwerfen per Stimme: das Gesagte liegt sofort bei „Will“.
+  function diktiere(knopf, status) {
+    const r = new Sprache();
+    let fertig = false;
+    const ende = text => { fertig = true; meldung = { text }; app.zeichne(); };
+    r.lang = 'de-DE';
+    r.interimResults = false;
+    r.onresult = e => {
+      const text = String(e.results[0][0].transcript || '').trim();
+      if (!text) return ende('Ich habe nichts gehört.');
+      fertig = true;
+      const s = AH.aufgaben.reinwerfen(app.state, { titel: text[0].toUpperCase() + text.slice(1), art: 'will' }, app.heute());
+      if (s === app.state) return ende('Das habe ich nicht verstanden. Versuch es noch einmal.');
+      const neu = s.aufgaben[s.aufgaben.length - 1];
+      meldung = { text: '„' + neu.titel + '“ liegt bei „Will“ bereit.', mussId: neu.id };
+      app.setze(s);
+    };
+    r.onerror = e => ende(e.error === 'not-allowed' || e.error === 'service-not-allowed'
+      ? 'Das Mikro ist für die App nicht erlaubt. Tippen geht immer.'
+      : 'Das habe ich nicht verstanden. Versuch es noch einmal.');
+    r.onend = () => { if (!fertig) ende('Ich habe nichts gehört.'); };
+    knopf.disabled = true;
+    status.textContent = 'Ich höre zu. Sag, worum es geht.';
+    try { r.start(); } catch (e) { ende('Das Mikro lässt sich gerade nicht starten.'); }
+  }
+
+  function meldungZeile() {
+    if (!meldung) return null;
+    const id = meldung.mussId;
+    return h('div', { class: 'meldung' },
+      h('p', { class: 'leise', role: 'status' }, meldung.text),
+      id ? h('button', { class: 'knopf knopf-still', onclick: () => {
+        meldung = { text: 'Liegt jetzt bei „Muss“ und geht nicht verloren.' };
+        app.setze(AH.aufgaben.setzeArt(app.state, id, 'muss'));
+      } }, 'Ist ein Muss') : null);
+  }
+
   const HINWEISE = {
     beschaedigt: 'Der gespeicherte Stand war nicht lesbar. Er ist aufbewahrt, die App beginnt neu.',
     'kein-speicher': 'Dieser Browser lässt kein Speichern zu. Dein Stand hält nur, bis du die Seite schließt.',
@@ -160,7 +224,9 @@
 
   app.bildschirme.jetzt = {
     zeichne(el) {
-      const r = AH.auswahl.waehle(app.state, { ohneOffen, stunde: app.stunde() });
+      const r = AH.auswahl.waehle(app.state, { ohneOffen, stunde: app.stunde(), gewaehlt });
+      const hoert = h('p', { class: 'leise', role: 'status' });
+      const mikro = Sprache ? h('button', { class: 'knopf knopf-rein knopf-mikro', onclick: () => diktiere(mikro, hoert) }, 'Diktieren') : null;
       if (app.hinweis) an(el, h('p', { class: 'hinweis' }, HINWEISE[app.hinweis]));
       an(el, tagesformLeiste(), AH.zimmerbild.element(app.state));
       if (r.art === 'aufgabe') an(el, karteAufgabe(r.aufgabe, r.groesse, r.slot));
@@ -172,12 +238,15 @@
       else an(el, h('section', { class: 'karte karte-ruhig blase' }, h('h1', { class: 'karte-text' }, 'Für heute ist nichts mehr dran.')));
       if (r.art !== 'offen') an(el, ablageOffen());
       an(el,
-        meldung ? h('p', { class: 'leise', role: 'status' }, meldung) : null,
+        meldungZeile(),
         h('div', { class: 'reihe' },
-          h('button', { class: 'knopf knopf-rein', onclick: () => app.zeige('reinwerfen') }, 'Aufgabe reinwerfen')));
+          h('button', { class: 'knopf knopf-rein', onclick: () => app.zeige('reinwerfen') }, 'Aufgabe reinwerfen'),
+          mikro),
+        hoert,
+        heuteListe(r.art === 'aufgabe' ? AH.auswahl.schluessel(r.aufgabe, r.slot) : null));
       meldung = null;
     },
-    nachAbschluss() { ohneOffen = false; },
+    nachAbschluss() { ohneOffen = false; gewaehlt = null; },
     // „Jetzt machen“ aus der Aufgabenliste: startet in der Größe, die zur Energie passt
     starte(aufgabe) { starte(aufgabe, AH.tagesform.groesseFuer(app.state.form.stufe)); },
   };
@@ -191,7 +260,7 @@
           fehler.hidden = false;
           return titel.focus();
         }
-        meldung = art === 'muss' ? 'Liegt bei „Muss“ bereit und geht nicht verloren.' : 'Liegt bei „Will“ bereit.';
+        meldung = { text: art === 'muss' ? 'Liegt bei „Muss“ bereit und geht nicht verloren.' : 'Liegt bei „Will“ bereit.' };
         app.aktuell = 'jetzt';
         app.setze(AH.aufgaben.reinwerfen(app.state, { titel: titel.value, art }, app.heute()));
       };

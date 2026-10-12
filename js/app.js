@@ -53,6 +53,7 @@
 
     sichere() {
       if (!AH.speicher.speichere(speicherOrt(), app.state) && !app.hinweis) app.hinweis = 'kein-speicher';
+      AH.drive.geaendert();
     },
 
     setze(neu) {
@@ -155,6 +156,8 @@
       app.hinweis = r.hinweis;
       if (app.state !== r.state) app.sichere();
       if (!app.state.willkommen) app.aktuell = 'willkommen';
+      // Während eine Zeit läuft, geht kein Anmeldefenster auf.
+      AH.drive.start({ text: () => AH.speicher.alsText(app.state), ruhig: () => app.aktuell === 'timer' });
       // Zurück in der App: nur neu zeichnen, wenn ein neuer Tag begonnen hat, sonst ginge Getipptes verloren.
       // Der Jetzt-Bildschirm hat nichts Getipptes und wird immer aufgefrischt, damit Füttern und
       // Abendrunde erscheinen, sobald ihre Tageszeit beginnt.
@@ -177,6 +180,7 @@
           return;
         }
         app.tagPruefen();
+        AH.drive.beimTipp();
       }, true);
       app.zeichne();
     },

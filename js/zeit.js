@@ -32,6 +32,16 @@
     return naechste === undefined || stunde < naechste;
   }
 
+  const ENDSPURT = 30; // Sekunden
+
+  // Die laufende Zeit einer Aufgabe: Restsekunden, Anteil für den Ring, Anzeige und Abschnitt.
+  function rest(start, dauerMs, jetzt) {
+    const ms = Math.max(0, start + dauerMs - jetzt);
+    const sek = Math.ceil(ms / 1000);
+    const phase = sek === 0 ? 'um' : (sek <= ENDSPURT && dauerMs > ENDSPURT * 1000 ? 'endspurt' : 'laeuft');
+    return { sek, anteil: dauerMs > 0 ? Math.min(1, ms / dauerMs) : 0, text: Math.floor(sek / 60) + ':' + zwei(sek % 60), phase };
+  }
+
   const alsZahl = tag => Date.UTC(Number(tag.slice(0, 4)), Number(tag.slice(5, 7)) - 1, Number(tag.slice(8, 10)));
 
   // 0 ist Sonntag, 6 ist Samstag
@@ -47,7 +57,7 @@
     return Math.round((alsZahl(bis) - alsZahl(von)) / 86400000);
   }
 
-  const api = { TAGESBEGINN, tagUndStunde, slotAktiv, rundeOffen, wochentag, plusTage, tageZwischen };
+  const api = { TAGESBEGINN, tagUndStunde, slotAktiv, rundeOffen, rest, wochentag, plusTage, tageZwischen };
   root.AH = root.AH || {};
   root.AH.zeit = api;
   if (typeof module !== 'undefined' && module.exports) module.exports = api;

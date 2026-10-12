@@ -126,12 +126,6 @@ button:focus-visible, input:focus-visible { outline: 3px solid var(--haupt); out
 .paket-name { font-weight: 600; }
 .paket-inhalt { font-size: 14px; color: var(--b-leise); }
 
-.zeit { height: 150px; display: grid; place-items: center; margin-top: 8px; }
-.zeit-flaeche {
-  width: 140px; height: 140px; border-radius: 50%;
-  background: var(--b-fg); opacity: 0.28;
-  transition: transform 1s linear;
-}
 .zeit-text { text-align: center; color: var(--b-leise, var(--leise)); }
 
 .parken { display: flex; flex-direction: column; gap: 10px; }
@@ -162,9 +156,6 @@ button:focus-visible, input:focus-visible { outline: 3px solid var(--haupt); out
 .leiste-knopf { flex: 1; font: inherit; color: var(--leise); background: none; border: 0; min-height: 56px; cursor: pointer; }
 .leiste-knopf[aria-current="page"] { color: var(--text); font-weight: 600; }
 
-@media (prefers-reduced-motion: reduce) {
-  .zeit-flaeche { transition: none; }
-}
 
 /* Wesen und Zimmer */
 :root { --fell: #fbeede; --fell-linie: #9a7f72; --fell-dunkel: #5a4a44; --fell-rosa: #f5b7c4; --wand: #f1eaf8; --boden: #f7e6d8; --himmel: #dcecfb; --teppich: #ffdce6; --gold: #e9b949; }
@@ -341,7 +332,7 @@ body {
 
 /* Wesenwahl */
 .wesenwahl { display: flex; flex-direction: column; gap: 8px; }
-.wesenwahl-reihe { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+.wesenwahl-reihe { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
 .wesen-knopf {
   font: inherit; font-size: 15px; color: var(--text); cursor: pointer;
   background: var(--flaeche); border: 4px solid var(--rand); box-shadow: 0 0 0 1px var(--linie); border-radius: 22px;
@@ -380,3 +371,89 @@ body {
   background: var(--flaeche); border: 1px solid var(--linie); border-radius: 999px; overflow-wrap: anywhere;
 }
 .plan-knopf[aria-pressed="true"] { background: var(--punkt-3); border-color: transparent; color: var(--text); font-weight: 600; }
+
+/* Lebendig: Wesen und Zimmer bewegen sich */
+:root { --wand-viel: #fff1d6; }
+@media (prefers-color-scheme: dark) {
+  :root { --wand-viel: #453a2a; }
+}
+.wesen [class^="w-"], .zimmerbild [class^="zb-"] { transform-box: fill-box; }
+.w-atmet { transform-origin: 50% 100%; animation: w-atmen 3.4s ease-in-out infinite; }
+.w-schwanz { transform-origin: 0% 100%; animation: w-wedeln 2.4s ease-in-out infinite; }
+.w-kl { transform-origin: 100% 50%; animation: w-wedeln 1.8s ease-in-out infinite; }
+.w-kr { transform-origin: 0% 50%; animation: w-wedeln 1.8s ease-in-out infinite reverse; }
+.w-blatt { transform-origin: 50% 100%; animation: w-wedeln 2.8s ease-in-out infinite; }
+.w-funkel { transform-origin: center; animation: w-funkeln 1.4s ease-in-out infinite; }
+g:nth-child(3) > .w-funkel { animation-delay: 0.5s; }
+g:nth-child(4) > .w-funkel { animation-delay: 0.9s; }
+.wesen.viel { animation: w-huepfen 0.8s ease-in-out infinite; }
+.wesen.viel .w-arm-l { transform-origin: 100% 100%; animation: w-winken 0.4s ease-in-out infinite; }
+.wesen.viel .w-arm-r { transform-origin: 0% 100%; animation: w-winken 0.4s ease-in-out infinite reverse; }
+.w-reib { animation: w-reiben 0.5s ease-in-out infinite; }
+.w-reib.w-gegen { animation-direction: reverse; }
+.wesen.jubelt { animation: w-huepfen 0.6s ease-in-out infinite; }
+@keyframes w-atmen { 50% { transform: scale(1.035, 0.965); } }
+@keyframes w-wedeln { 0%, 100% { transform: rotate(-7deg); } 50% { transform: rotate(7deg); } }
+@keyframes w-funkeln { 0%, 100% { opacity: 0.2; transform: scale(0.7); } 50% { opacity: 1; transform: scale(1.1); } }
+@keyframes w-huepfen { 0%, 100% { transform: translateY(0); } 45% { transform: translateY(-13px); } }
+@keyframes w-winken { 0%, 100% { transform: rotate(-12deg); } 50% { transform: rotate(12deg); } }
+@keyframes w-reiben { 0%, 100% { transform: translateX(-2.5px); } 50% { transform: translateX(2.5px); } }
+@keyframes w-zappeln { 0%, 100% { transform: translateY(0) rotate(-2deg); } 50% { transform: translateY(-4px) rotate(2deg); } }
+
+.zb-viel .zb-wand { fill: var(--wand-viel); }
+.zb-wolke { animation: zb-ziehen 24s linear infinite; }
+.zb-sonne { transform-origin: center; animation: zb-drehen 18s linear infinite; }
+.zb-lauf { animation: zb-laufen 30s ease-in-out infinite; }
+.zb-wiege { transform-origin: 50% 100%; animation: zb-wiegen 3.2s ease-in-out infinite; }
+.zb-pendel { transform-origin: 50% 0%; animation: zb-wiegen 4s ease-in-out infinite; }
+.zb-hauch { transform-origin: 50% 100%; animation: w-atmen 3.8s ease-in-out infinite; }
+.zb-roll { transform-origin: center; animation: zb-rollen 6s ease-in-out infinite; }
+.zb-schwimm path { animation: zb-schwimmen 4s ease-in-out infinite; }
+.zb-funkel circle { animation: zb-leuchten 1.8s ease-in-out infinite; }
+.zb-funkel circle:nth-of-type(2n) { animation-delay: 0.6s; }
+.zb-funkel circle:nth-of-type(3n) { animation-delay: 1.2s; }
+.zb-flacker [fill="#ffd27a"], .zb-flacker [fill="#ffe9a8"] { transform-box: fill-box; transform-origin: 50% 100%; animation: zb-flackern 1.1s ease-in-out infinite; }
+@keyframes zb-ziehen { from { transform: translateX(-46px); } to { transform: translateX(56px); } }
+@keyframes zb-drehen { to { transform: rotate(360deg); } }
+@keyframes zb-laufen { 0%, 12% { transform: translateX(0); } 28%, 40% { transform: translateX(-62px); } 56%, 64% { transform: translateX(0); } 80%, 90% { transform: translateX(58px); } 100% { transform: translateX(0); } }
+@keyframes zb-wiegen { 0%, 100% { transform: rotate(-4deg); } 50% { transform: rotate(4deg); } }
+@keyframes zb-rollen { 0%, 100% { transform: translateX(-4px) rotate(-25deg); } 50% { transform: translateX(4px) rotate(25deg); } }
+@keyframes zb-schwimmen { 0%, 100% { transform: translateX(-2.5px); } 50% { transform: translateX(2.5px); } }
+@keyframes zb-leuchten { 0%, 100% { opacity: 0.45; } 50% { opacity: 1; } }
+@keyframes zb-flackern { 0%, 100% { opacity: 0.8; transform: scale(1); } 50% { opacity: 1; transform: scale(1.06, 1.12); } }
+
+/* Die Zeit läuft als Ring um das Wesen */
+.zeitbuehne { width: min(230px, 72%); margin: 8px auto 0; }
+.zeitbuehne svg { display: block; width: 100%; height: auto; overflow: visible; }
+.zeit-bahn { fill: var(--rand); fill-opacity: 0.6; stroke: var(--b-fg); stroke-opacity: 0.16; stroke-width: 9; }
+.zeit-ring { fill: none; stroke: var(--b-fg); stroke-width: 9; stroke-linecap: round; transition: stroke-dashoffset 0.25s linear; }
+.zeitbuehne .w-atmet { animation-duration: 1.4s; }
+.zeitbuehne[data-phase="endspurt"] .wesen { animation: w-zappeln 0.35s ease-in-out infinite; }
+.zeitbuehne[data-phase="endspurt"] .w-reib { animation-duration: 0.28s; }
+.zeit-uhr { margin: 0; text-align: center; font-size: 36px; font-weight: 600; line-height: 1.1; font-variant-numeric: tabular-nums; color: var(--b-fg); }
+
+/* Heute dran: alles zum Aussuchen */
+.heute-liste { margin-top: 4px; }
+.heute-liste summary { cursor: pointer; color: var(--leise); font-size: 15px; padding: 12px 4px; }
+.heute-reihen { display: flex; flex-direction: column; gap: 8px; }
+.heute-eintrag {
+  font: inherit; text-align: left; cursor: pointer; display: flex; justify-content: space-between; align-items: center; gap: 10px;
+  min-height: 48px; padding: 10px 16px; border-radius: 18px; border: 3px solid var(--rand); box-shadow: 0 0 0 1px var(--linie);
+  background: var(--b-bg, var(--flaeche)); color: var(--b-fg, var(--text));
+}
+.heute-eintrag[aria-current] { box-shadow: 0 0 0 2px var(--b-fg, var(--haupt)); font-weight: 600; }
+.heute-text { overflow-wrap: anywhere; }
+.heute-min { color: var(--b-leise, var(--leise)); font-size: 15px; white-space: nowrap; }
+
+.meldung { display: flex; align-items: center; gap: 10px; }
+.meldung p { flex: 1; margin: 0; }
+.meldung .knopf { flex: 0 0 auto; }
+.reihe > .knopf-mikro { flex: 0 0 auto; }
+
+.drive { margin-top: 18px; display: flex; flex-direction: column; gap: 10px; }
+.drive-knoepfe { display: flex; flex-direction: column; gap: 10px; }
+
+@media (prefers-reduced-motion: reduce) {
+  .wesen, .wesen *, .zimmerbild *, .zeitbuehne * { animation: none !important; }
+  .zeit-ring { transition: none; }
+}

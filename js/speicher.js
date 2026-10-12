@@ -12,7 +12,7 @@
       form: { stufe: 'mittel', andersFolge: 0 },
       heute: { tag, nicht: [], spaeter: [], stuecke: 0, letzterBereich: null },
       zimmer: [],
-      wesen: 'otter',
+      wesen: 'axolotl',
       plan: {}, // je Tag die gewählte Variante oder 'frei'
     };
   }
@@ -23,7 +23,8 @@
 
   const GROESSEN = ['winzig', 'normal', 'gross'];
   const STUFEN = ['klein', 'mittel', 'gross'];
-  const WESEN = ['otter', 'axolotl', 'pilz'];
+  const WESEN = ['axolotl', 'pilz'];
+  const WESEN_FRUEHER = ['otter']; // gab es einmal, alte Stände bleiben lesbar
   const istText = x => typeof x === 'string';
 
   const RUNDEN = ['morgens', 'abends', 'nacht'];
@@ -80,7 +81,7 @@
       obj.pakete.every(istText) &&
       obj.offen.every(o => istObjekt(o) && istText(o.aufgabeId) && GROESSEN.includes(o.groesse) && istText(o.satz)) &&
       obj.zimmer.every(z => istObjekt(z) && istText(z.bereich) && istText(z.stueck) && typeof z.besonders === 'boolean') &&
-      (obj.wesen === undefined || WESEN.includes(obj.wesen)) &&
+      (obj.wesen === undefined || WESEN.includes(obj.wesen) || WESEN_FRUEHER.includes(obj.wesen)) &&
       istObjekt(obj.form) && STUFEN.includes(obj.form.stufe) &&
       (obj.plan === undefined || (istObjekt(obj.plan) && Object.values(obj.plan).every(istText))) &&
       istObjekt(obj.heute) && istText(obj.heute.tag) &&
@@ -91,12 +92,17 @@
     try {
       const state = JSON.parse(text);
       if (!pruefe(state)) return { ok: false };
-      // Stände aus der Zeit vor der Wesenwahl
-      if (state.wesen === undefined) state.wesen = 'otter';
+      // Stände aus der Zeit vor der Wesenwahl oder mit einem Wesen, das es nicht mehr gibt
+      if (!WESEN.includes(state.wesen)) state.wesen = 'axolotl';
       return { ok: true, state };
     } catch (e) {
       return { ok: false };
     }
+  }
+
+  // Wer eine Sicherung einspielt, ist schon eingezogen: die Begrüßung kommt nicht noch einmal.
+  function eingespielt(state) {
+    return Object.assign({}, state, { willkommen: true });
   }
 
   function alsText(state) {
@@ -126,7 +132,7 @@
     }
   }
 
-  const api = { SCHLUESSEL, leer, pruefe, lade, speichere, alsText, ausText };
+  const api = { SCHLUESSEL, leer, pruefe, lade, speichere, alsText, ausText, eingespielt };
   root.AH = root.AH || {};
   root.AH.speicher = api;
   if (typeof module !== 'undefined' && module.exports) module.exports = api;

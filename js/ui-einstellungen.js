@@ -26,11 +26,59 @@
         app.laeuft = null;
         app.meldung = 'Die Sicherung ist eingespielt.';
         // ältere Sicherungen bekommen die eigenen Aufgaben, Zimmer und Wesen bleiben
-        app.setze(AH.aufgaben.meineEinsetzen(r.state, app.heute()));
+        app.setze(AH.speicher.eingespielt(AH.aufgaben.meineEinsetzen(r.state, app.heute())));
       } },
       { text: 'Abbrechen' },
     ], 'Alles, was jetzt in der App steht, wird durch die Sicherung ersetzt.');
     return '';
+  }
+
+  // Google Drive: verbinden, Stand der Sicherung, zurückholen.
+  function driveAbschnitt() {
+    const drive = AH.drive;
+    const kasten = h('section', { class: 'drive' }, h('h2', { class: 'gruppe-titel' }, 'Google Drive'));
+    if (!drive.eingerichtet()) {
+      kasten.append(h('p', { class: 'leise' }, 'Die automatische Sicherung in Google Drive ist noch nicht eingerichtet.'));
+      return kasten;
+    }
+    drive.vorbereiten().catch(() => {});
+    const zeile = h('p', { class: 'leise', role: 'status' });
+    const knoepfe = h('div', { class: 'drive-knoepfe' });
+    const sag = text => { zeile.textContent = text; };
+    const FEHLER = { netz: 'Gerade kein Netz. Versuch es gleich noch einmal.', anmeldung: 'Die Anmeldung bei Google hat nicht geklappt.', leer: 'In Drive liegt noch keine Sicherung.' };
+    const schief = e => sag(FEHLER[e.message] || 'Das hat gerade nicht geklappt. Dein Stand ist unverändert.');
+    const zurueckholen = () => drive.holen().then(text => {
+      const meldung = einspielen(text);
+      if (meldung) sag(meldung);
+    }, schief);
+
+    const zeichne = () => {
+      const m = drive.merker();
+      sag(drive.zeile(m, app.heute()));
+      knoepfe.replaceChildren(...(m.an ? [
+        h('button', { class: 'knopf knopf-haupt', onclick: () => { sag('Sichere …'); drive.jetztSichern().then(zeichne, schief); } }, 'Jetzt sichern'),
+        h('button', { class: 'knopf', onclick: zurueckholen }, 'Aus Drive zurückholen'),
+        h('button', { class: 'knopf knopf-still', onclick: () => drive.trennen() }, 'Trennen'),
+      ] : [
+        h('button', { class: 'knopf knopf-haupt', onclick: () => {
+          sag('Verbinde …');
+          drive.verbinden().then(r => {
+            if (!r.vorhanden) return drive.uebernehmen().then(zeichne, schief);
+            app.frage('In Drive liegt schon eine Sicherung.', [
+              { text: 'Aus Drive zurückholen', haupt: true, tu: () => { drive.nurVerbinden(); zurueckholen(); } },
+              { text: 'Mit dem Stand von diesem Gerät überschreiben', tu: () => drive.uebernehmen().then(zeichne, schief) },
+              { text: 'Abbrechen', tu: zeichne },
+            ], 'Was soll gelten?');
+          }, schief);
+        } }, 'Mit Google Drive verbinden'),
+      ]));
+    };
+    drive.beiAenderung(() => { if (kasten.isConnected) zeichne(); });
+    zeichne();
+    kasten.append(
+      h('p', { class: 'leise' }, 'Verbunden sichert die App jede Änderung von selbst in dein Drive. Sie sieht dort nur ihre eigene Datei.'),
+      zeile, knoepfe);
+    return kasten;
   }
 
   app.bildschirme.sicherung = {
@@ -52,7 +100,8 @@
         h('div', { class: 'reihe' },
           h('button', { class: 'knopf knopf-haupt', onclick: () => { herunterladen(); status.textContent = 'Die Sicherung liegt bei deinen Downloads.'; } }, 'Sicherung herunterladen')),
         h('div', { class: 'feldzeile' }, h('label', { for: 'f-datei' }, 'Sicherung einspielen'), datei),
-        status);
+        status,
+        driveAbschnitt());
     },
   };
 })(typeof globalThis !== 'undefined' ? globalThis : this);

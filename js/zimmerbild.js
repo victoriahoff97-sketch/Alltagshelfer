@@ -102,10 +102,26 @@
     Regenbogenfenster: { z: 0, s: L('M30 84 a19 19 0 0 1 38 0', F.rosa, 3) + L('M34.5 84 a14.5 14.5 0 0 1 29 0', F.gelb, 3) + L('M39 84 a10 10 0 0 1 20 0', F.blau, 3) },
   };
 
-  const EINRICHTUNG =
+  // Wie sich ein Stück bewegt: wiege (von unten), pendel (von oben), funkel, flacker, roll, schwimm, hauch.
+  const BEWEGT = {
+    Lichterkette: 'funkel', Lichterglas: 'funkel', Vorhang: 'hauch', Kissen: 'hauch', Stehlampe: 'flacker',
+    Duftkerze: 'flacker', Kerze: 'flacker', Farn: 'wiege', Monstera: 'wiege', 'Blümchen': 'wiege', Blumenvase: 'wiege',
+    Federangel: 'wiege', 'Hängepflanze': 'pendel', Wimpelkette: 'pendel', Sternenlampe: 'pendel', Wolkenmobile: 'pendel',
+    Ball: 'roll', 'Wollknäuel': 'roll', Spielmaus: 'roll', Goldfischglas: 'schwimm', Herzkissen: 'hauch',
+    'Teekanne mit Gesicht': 'hauch', Plattenspieler: 'dreh', Globus: 'hauch', Springseil: 'hauch',
+  };
+
+  // Am Fenster zieht eine Wolke vorbei; bei viel Energie scheint die Sonne.
+  const WOLKE = '<g class="zb-wolke"><ellipse cx="30" cy="52" rx="10" ry="5.5" fill="#ffffff"/><ellipse cx="39" cy="48" rx="9" ry="7" fill="#ffffff"/><ellipse cx="47" cy="52" rx="8" ry="5" fill="#ffffff"/></g>';
+  const SONNE = '<g class="zb-sonne"><circle cx="49" cy="61" r="11" fill="#ffd27a"/>' +
+    L('M49 44 v-5 M49 83 v-5 M32 61 h-5 M71 61 h-5 M37 49 l-3.5 -3.5 M61 73 l3.5 3.5 M37 73 l-3.5 3.5 M61 49 l3.5 -3.5', '#ffd27a', 2.6) + '</g>';
+
+  const einrichtung = viel =>
     '<rect class="zb-wand" width="340" height="250" rx="22"/>' +
     '<path class="zb-boden" d="M0 170 h340 v58 a22 22 0 0 1 -22 22 h-296 a22 22 0 0 1 -22 -22 z"/>' +
+    '<clipPath id="zb-fensterform"><rect x="20" y="34" width="58" height="54" rx="9"/></clipPath>' +
     '<rect class="zb-fenster" x="20" y="34" width="58" height="54" rx="9"/>' +
+    '<g clip-path="url(#zb-fensterform)">' + (viel ? SONNE : WOLKE) + '</g>' +
     '<path class="zb-sprosse" d="M49 34 v54 M20 61 h58"/>' +
     '<rect class="zb-holz" x="15" y="88" width="68" height="4" rx="2"/>' +
     '<rect class="zb-holz" x="122" y="96" width="52" height="4" rx="2"/>' +
@@ -116,35 +132,47 @@
     return besonders ? BESONDERE[name] : (STUECKE[bereich] || {})[name];
   }
 
-  // zimmer: Einträge aus dem Zustand; zustand: 'wach' | 'klein' | 'freut'; neu: Name des Stücks, das gerade dazukam;
+  // zimmer: Einträge aus dem Zustand; zustand: 'wach' | 'klein' | 'viel' | 'freut'; neu: Name des Stücks, das gerade dazukam;
   // wesen: id der Art
   function svg(zimmer, zustand, neu, wesen) {
     const teile = [];
     zimmer.forEach((z, i) => {
       const b = bild(z.stueck, z.bereich, z.besonders);
-      if (b) teile.push({ z: b.z, i, s: z.stueck === neu ? '<g class="zb-neu">' + b.s + '</g>' : b.s });
+      if (!b) return;
+      const s = BEWEGT[z.stueck] ? '<g class="zb-' + BEWEGT[z.stueck] + '">' + b.s + '</g>' : b.s;
+      teile.push({ z: b.z, i, s: z.stueck === neu ? '<g class="zb-neu">' + s + '</g>' : s });
     });
     teile.sort((a, b) => a.z - b.z || a.i - b.i);
     const hinten = teile.filter(t => t.z < 3).map(t => t.s).join('');
     const vorn = teile.filter(t => t.z >= 3).map(t => t.s).join('');
     const liegt = zustand === 'klein';
     const wer = wesenbild.art(wesen).satz;
-    const text = wer + (liegt ? ' liegt eingekuschelt im Zimmer.' : ' sitzt im Zimmer und schaut dich an.') +
+    const viel = zustand === 'viel';
+    const tut = liegt ? ' liegt eingekuschelt im Zimmer.' : viel ? ' hüpft voller Energie durchs Zimmer.' : ' sitzt im Zimmer und schaut dich an.';
+    // Wach läuft das Wesen im Zimmer hin und her; eingekuschelt und beim Freuen bleibt es an seinem Platz.
+    const laeuft = zustand === 'wach' || viel;
+    const klassen = 'wesen' + (zustand === 'freut' ? ' freut' : '') + (viel ? ' viel' : '');
+    const text = wer + tut +
       (zimmer.length ? ' Im Zimmer: ' + zimmer.map(z => z.stueck).join(', ') + '.' : '');
-    return '<svg class="zimmerbild" viewBox="0 0 340 250" role="img" aria-label="' + text.replace(/"/g, '') + '">' +
-      EINRICHTUNG + '<g class="zb-stuecke">' + hinten + '</g>' +
-      '<g transform="translate(125 138) scale(0.72)"><g class="wesen' + (zustand === 'freut' ? ' freut' : '') + '">' + wesenbild.innen(wesen, zustand) + '</g></g>' +
+    return '<svg class="zimmerbild' + (viel ? ' zb-viel' : '') + '" viewBox="0 0 340 250" role="img" aria-label="' + text.replace(/"/g, '') + '">' +
+      einrichtung(viel) + '<g class="zb-stuecke">' + hinten + '</g>' +
+      '<g' + (laeuft ? ' class="zb-lauf"' : '') + '><g transform="translate(125 138) scale(0.72)"><g class="' + klassen + '">' + wesenbild.innen(wesen, zustand) + '</g></g></g>' +
       '<g class="zb-stuecke">' + vorn + '</g></svg>';
+  }
+
+  // Die Energie bestimmt, wie das Wesen gerade ist.
+  function stimmung(state) {
+    return { klein: 'klein', gross: 'viel' }[state.form.stufe] || 'wach';
   }
 
   function element(state, zustand, neu) {
     const el = document.createElement('div');
     el.className = 'szene';
-    el.innerHTML = svg(state.zimmer, zustand || (state.form.stufe === 'klein' ? 'klein' : 'wach'), neu, state.wesen);
+    el.innerHTML = svg(state.zimmer, zustand || stimmung(state), neu, state.wesen);
     return el;
   }
 
-  const api = { svg, element, STUECKE, BESONDERE };
+  const api = { svg, element, stimmung, STUECKE, BESONDERE };
   root.AH = root.AH || {};
   root.AH.zimmerbild = api;
   if (typeof module !== 'undefined' && module.exports) module.exports = api;

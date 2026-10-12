@@ -140,6 +140,14 @@
   }
 
   // „Will“ wandert nach vier Wochen still in „Vielleicht irgendwann“. „Muss“ bleibt immer.
+  // Reingeworfenes nachträglich zu „Muss“ oder „Will“ machen.
+  function setzeArt(state, id, art) {
+    if (!state.aufgaben.some(a => a.id === id) || (art !== 'muss' && art !== 'will')) return state;
+    const s = kopie(state);
+    s.aufgaben.find(a => a.id === id).art = art;
+    return s;
+  }
+
   function aufraeumen(state, tag) {
     const alt = a => a.art === 'will' && !a.irgendwann && a.angelegt &&
       zeit.tageZwischen(a.angelegt, tag) >= WILL_TAGE && !state.offen.some(o => o.aufgabeId === a.id);
@@ -235,7 +243,7 @@
     return s;
   }
 
-  const api = { vorschlag, neu, aendere, groessenAus, loesche, dran, nochNicht, abgenommen, reinwerfen, aufraeumen, zurueckholen, meineEinsetzen, nachtragen, ansicht, setzePlan, planTage };
+  const api = { vorschlag, neu, aendere, groessenAus, loesche, dran, nochNicht, abgenommen, reinwerfen, setzeArt, aufraeumen, zurueckholen, meineEinsetzen, nachtragen, ansicht, setzePlan, planTage };
   root.AH = root.AH || {};
   root.AH.aufgaben = api;
   if (typeof module !== 'undefined' && module.exports) module.exports = api;

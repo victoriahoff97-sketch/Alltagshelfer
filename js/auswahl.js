@@ -29,6 +29,10 @@
       if (d) dran.push({ a, slot: d.slot });
     }
 
+    // Aus der Liste „Heute dran“ gewählt: genau diese Aufgabe kommt auf die Karte.
+    const gewaehlt = o.gewaehlt && dran.find(x => schluessel(x.a, x.slot) === o.gewaehlt);
+    if (gewaehlt) return { art: 'aufgabe', aufgabe: gewaehlt.a, groesse, slot: gewaehlt.slot };
+
     // Feste Aufgaben kommen vor allem anderen, solange sie nicht auf „Gleich“ stehen.
     const fest = dran.filter(x => x.a.fest && !heute.spaeter.includes(schluessel(x.a, x.slot))).sort((x, y) => x.a.nr - y.a.nr)[0];
     if (fest) return { art: 'aufgabe', aufgabe: fest.a, groesse, slot: fest.slot };
@@ -62,6 +66,24 @@
     return { art: 'aufgabe', aufgabe: kandidaten[0].a, groesse, slot: kandidaten[0].slot };
   }
 
+  // Alles, was heute ansteht, zum Aussuchen: Festes zuerst, dann „Muss“, sonst in der Reihenfolge der Aufgaben.
+  // Angefangenes steht bei „Gerade offen“, „Heute nicht“ bleibt weg.
+  function heuteDran(state, opt) {
+    const stunde = opt && opt.stunde !== undefined ? opt.stunde : 12;
+    const groesse = tagesform.groesseFuer(state.form.stufe);
+    const offeneIds = state.offen.map(x => x.aufgabeId);
+    const liste = [];
+    for (const a of state.aufgaben) {
+      if (offeneIds.includes(a.id)) continue;
+      const d = aufgaben.dran(a, state.heute.tag, stunde, state.plan);
+      if (!d) continue;
+      if (!a.fest && state.heute.nicht.includes(schluessel(a, d.slot))) continue;
+      liste.push({ aufgabe: a, slot: d.slot, groesse });
+    }
+    const rang = x => (x.aufgabe.fest ? 0 : x.aufgabe.art === 'muss' ? 1 : 2);
+    return liste.sort((x, y) => rang(x) - rang(y) || x.aufgabe.nr - y.aufgabe.nr);
+  }
+
   // „Etwas anderes“ und „Gleich“: die Aufgabe stellt sich für heute hinten an.
   function weiter(state, eintrag) {
     const s = kopie(state);
@@ -92,7 +114,7 @@
     return s;
   }
 
-  const api = { schluessel, waehle, weiter, festZurueck, heuteNicht, gezeigt };
+  const api = { schluessel, waehle, heuteDran, weiter, festZurueck, heuteNicht, gezeigt };
   root.AH = root.AH || {};
   root.AH.auswahl = api;
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
