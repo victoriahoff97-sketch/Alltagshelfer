@@ -1,0 +1,121 @@
+// Laden, Speichern und Sicherung des einen Zustandsobjekts.
+(function (root) {
+  const SCHLUESSEL = 'alltagshelfer.v1';
+
+  function leer(tag) {
+    return {
+      v: 1,
+      naechsteNr: 1,
+      aufgaben: [],
+      pakete: [],
+      offen: [],
+      form: { stufe: 'mittel', andersFolge: 0 },
+      heute: { tag, nicht: [], spaeter: [], stuecke: 0, letzterBereich: null },
+      zimmer: [],
+      wesen: 'otter',
+    };
+  }
+
+  function istObjekt(x) {
+    return !!x && typeof x === 'object' && !Array.isArray(x);
+  }
+
+  const GROESSEN = ['winzig', 'normal', 'gross'];
+  const STUFEN = ['klein', 'mittel', 'gross'];
+  const WESEN = ['otter', 'axolotl', 'pilz'];
+  const istText = x => typeof x === 'string';
+
+  const RUNDEN = ['morgens', 'abends', 'nacht'];
+  const fehlt = x => x === undefined || x === null;
+  const textOderLeer = x => fehlt(x) || istText(x);
+  const textliste = x => Array.isArray(x) && x.every(istText);
+
+  // Die Felder aus Etappe 2 dürfen fehlen (ältere Stände), aber nicht verbogen sein.
+  function zusatzOk(a) {
+    return (fehlt(a.zeiten) || (Array.isArray(a.zeiten) && a.zeiten.every(z => RUNDEN.includes(z)))) &&
+      (fehlt(a.tage) || (Array.isArray(a.tage) && a.tage.every(t => Number.isInteger(t) && t >= 0 && t <= 6))) &&
+      (fehlt(a.runden) || (istObjekt(a.runden) && Object.values(a.runden).every(istText))) &&
+      (fehlt(a.schritte) || (istObjekt(a.schritte) && GROESSEN.every(g => textliste(a.schritte[g])))) &&
+      (a.rhythmus === undefined || (Number.isFinite(a.rhythmus) && a.rhythmus >= 1)) &&
+      textOderLeer(a.ruhtBis) && textOderLeer(a.angelegt) && textOderLeer(a.danach) &&
+      (fehlt(a.art) || a.art === 'muss' || a.art === 'will');
+  }
+
+  function aufgabeOk(a) {
+    return istObjekt(a) && istText(a.id) && Number.isFinite(a.nr) && istText(a.bereich) && istText(a.titel) &&
+      istObjekt(a.groessen) &&
+      GROESSEN.every(g => istObjekt(a.groessen[g]) && istText(a.groessen[g].text) &&
+        Number.isFinite(a.groessen[g].min) && a.groessen[g].min > 0) &&
+      istText(a.fertig) && istText(a.notiz) && (a.zuletzt === null || istText(a.zuletzt)) && zusatzOk(a);
+  }
+
+  // Prüft die ganze Form, damit eine fremde Datei die Bildschirme nicht zum Absturz bringt.
+  function pruefe(obj) {
+    return formOk(obj) && stimmig(obj);
+  }
+
+  // Ein Stand kann die richtige Form haben und sich trotzdem selbst widersprechen.
+  function stimmig(obj) {
+    const ids = obj.aufgaben.map(a => a.id);
+    return new Set(ids).size === ids.length &&
+      obj.aufgaben.every(a => a.nr < obj.naechsteNr) &&
+      obj.offen.every(o => ids.includes(o.aufgabeId));
+  }
+
+  function formOk(obj) {
+    return istObjekt(obj) && obj.v === 1 && Number.isFinite(obj.naechsteNr) &&
+      ['aufgaben', 'offen', 'zimmer', 'pakete'].every(k => Array.isArray(obj[k])) &&
+      obj.aufgaben.every(aufgabeOk) &&
+      obj.pakete.every(istText) &&
+      obj.offen.every(o => istObjekt(o) && istText(o.aufgabeId) && GROESSEN.includes(o.groesse) && istText(o.satz)) &&
+      obj.zimmer.every(z => istObjekt(z) && istText(z.bereich) && istText(z.stueck) && typeof z.besonders === 'boolean') &&
+      (obj.wesen === undefined || WESEN.includes(obj.wesen)) &&
+      istObjekt(obj.form) && STUFEN.includes(obj.form.stufe) &&
+      istObjekt(obj.heute) && istText(obj.heute.tag) &&
+      Array.isArray(obj.heute.nicht) && Array.isArray(obj.heute.spaeter) && Number.isFinite(obj.heute.stuecke);
+  }
+
+  function ausText(text) {
+    try {
+      const state = JSON.parse(text);
+      if (!pruefe(state)) return { ok: false };
+      // Stände aus der Zeit vor der Wesenwahl
+      if (state.wesen === undefined) state.wesen = 'otter';
+      return { ok: true, state };
+    } catch (e) {
+      return { ok: false };
+    }
+  }
+
+  function alsText(state) {
+    return JSON.stringify(state);
+  }
+
+  function lade(storage, tag) {
+    let text;
+    try {
+      text = storage.getItem(SCHLUESSEL);
+    } catch (e) {
+      return { state: leer(tag), hinweis: 'kein-speicher' };
+    }
+    if (text === null || text === undefined) return { state: leer(tag), hinweis: null };
+    const r = ausText(text);
+    if (r.ok) return { state: r.state, hinweis: null };
+    try { storage.setItem(SCHLUESSEL + '.alt', text); } catch (e) { /* alter Stand geht verloren */ }
+    return { state: leer(tag), hinweis: 'beschaedigt' };
+  }
+
+  function speichere(storage, state) {
+    try {
+      storage.setItem(SCHLUESSEL, alsText(state));
+      return true;
+    } catch (e) {
+      return false;
+    }
+  }
+
+  const api = { SCHLUESSEL, leer, pruefe, lade, speichere, alsText, ausText };
+  root.AH = root.AH || {};
+  root.AH.speicher = api;
+  if (typeof module !== 'undefined' && module.exports) module.exports = api;
+})(typeof globalThis !== 'undefined' ? globalThis : this);
