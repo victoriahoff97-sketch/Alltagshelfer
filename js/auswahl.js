@@ -25,7 +25,7 @@
     const dran = [];
     for (const a of state.aufgaben) {
       if (offeneIds.includes(a.id)) continue;
-      const d = aufgaben.dran(a, heute.tag, stunde);
+      const d = aufgaben.dran(a, heute.tag, stunde, state.plan);
       if (d) dran.push({ a, slot: d.slot });
     }
 

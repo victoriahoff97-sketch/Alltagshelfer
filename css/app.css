@@ -370,3 +370,13 @@ body {
 .reihe > .knopf { overflow-wrap: anywhere; }
 
 .karte-sticker .karte-bereich { max-width: calc(100% - 70px); overflow-wrap: anywhere; border-radius: 14px; }
+
+/* Tage im Voraus */
+.plan { display: flex; flex-direction: column; gap: 8px; }
+.plan-zeile { display: grid; grid-template-columns: 78px repeat(3, minmax(0, 1fr)); gap: 6px; align-items: center; }
+.plan-tag { font-size: 15px; color: var(--text); }
+.plan-knopf {
+  font: inherit; font-size: 15px; color: var(--leise); cursor: pointer; min-height: 44px; padding: 0 4px;
+  background: var(--flaeche); border: 1px solid var(--linie); border-radius: 999px; overflow-wrap: anywhere;
+}
+.plan-knopf[aria-pressed="true"] { background: var(--punkt-3); border-color: transparent; color: var(--text); font-weight: 600; }

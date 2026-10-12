@@ -42,6 +42,7 @@
       rhythmus: rhythmusAus(felder.rhythmus),
       zeiten: felder.zeiten ? kopie(felder.zeiten) : null, // Runden: 'morgens', 'abends', 'nacht'
       tage: felder.tage ? kopie(felder.tage) : null,        // Wochentage, an denen sie dran ist (0 = Sonntag); leer = jeden Tag
+      varianten: felder.varianten ? kopie(felder.varianten) : null, // mehrere Fassungen; welche gilt, steht je Tag in state.plan
       runden: {},                                           // je Runde der Tag, an dem sie erledigt wurde
       fest: !!felder.fest,                                  // kommt vor allem anderen
       geteilt: !!felder.geteilt,                            // „Hat schon jemand gemacht“
@@ -98,10 +99,12 @@
   }
 
   // Ist die Aufgabe jetzt dran? null oder { slot }, slot ist die Runde oder null.
-  function dran(aufgabe, tag, stunde) {
+  function dran(aufgabe, tag, stunde, plan) {
     if (aufgabe.irgendwann) return null;
     if (aufgabe.ruhtBis && tag < aufgabe.ruhtBis) return null;
     if (aufgabe.tage && !aufgabe.tage.includes(zeit.wochentag(tag))) return null;
+    // Aufgaben mit Varianten bereiten den nächsten Tag vor; ist der als frei eingetragen, entfallen sie.
+    if (aufgabe.varianten && plan && plan[zeit.plusTage(tag, 1)] === 'frei') return null;
     if (aufgabe.zeiten && aufgabe.zeiten.length) {
       const runden = aufgabe.runden || {};
       const offen = aufgabe.zeiten.filter(z => zeit.rundeOffen(z, stunde, aufgabe.fest, aufgabe.zeiten) && runden[z] !== tag);
@@ -172,20 +175,67 @@
     return s;
   }
 
-  // Trägt Angaben nach, die der eigene Satz später dazubekommen hat (bisher: Wochentage).
+  // Was der Bildschirm von einer Aufgabe zeigt: Text, Dauer und Schritte der Größe.
+  // Bei Aufgaben mit Varianten gilt die Fassung, die für den nächsten Tag eingetragen ist.
+  // Steht dort nichts, kommt statt dessen die Frage mit den Wahlmöglichkeiten.
+  function ansicht(aufgabe, groesse, state, tag) {
+    if (!aufgabe.varianten) {
+      const g = aufgabe.groessen[groesse];
+      return { text: g.text, min: g.min, schritte: aufgabe.schritte ? aufgabe.schritte[groesse] || null : null };
+    }
+    const plan = state.plan || {};
+    const zieltag = zeit.plusTage(tag, 1);
+    const v = aufgabe.varianten.liste.find(x => x.id === plan[zieltag]);
+    if (!v) {
+      return { frage: aufgabe.varianten.frage, wahl: aufgabe.varianten.liste.map(x => ({ id: x.id, name: x.name })), zieltag };
+    }
+    let schritte = v.schritte[groesse].slice();
+    // Zusatzschritte entfallen, wenn heute schon eine der genannten Fassungen galt.
+    if (v.zusatz && !v.zusatz.nichtNach.includes(plan[tag])) schritte = schritte.concat(v.zusatz.schritte);
+    return { text: v.groessen[groesse].text, min: v.groessen[groesse].min, schritte, variante: v.name, zieltag };
+  }
+
+  // Trägt für einen Tag eine Variante oder 'frei' ein; ein leerer Wert löscht den Eintrag.
+  function setzePlan(state, tag, wert) {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(String(tag))) return state;
+    const erlaubt = ['frei'];
+    for (const a of state.aufgaben) if (a.varianten) for (const v of a.varianten.liste) erlaubt.push(v.id);
+    if (wert !== null && wert !== undefined && !erlaubt.includes(wert)) return state;
+    const s = kopie(state);
+    s.plan = Object.assign({}, s.plan);
+    if (wert === null || wert === undefined) delete s.plan[tag];
+    else s.plan[tag] = wert;
+    return s;
+  }
+
+  // Die kommenden Tage, die diese Aufgabe am Vorabend vorbereitet.
+  function planTage(aufgabe, tag, anzahl) {
+    const tage = [];
+    for (let i = 1; i <= anzahl; i++) {
+      const d = zeit.plusTage(tag, i);
+      if (!aufgabe.tage || aufgabe.tage.includes(zeit.wochentag(zeit.plusTage(d, -1)))) tage.push(d);
+    }
+    return tage;
+  }
+
+  // Trägt Angaben nach, die der eigene Satz später dazubekommen hat.
   // Gefunden wird über den Titel; was an der Aufgabe schon steht, bleibt.
+  const NACHTRAG = ['tage', 'varianten'];
   function nachtragen(state) {
     if (!meine) return state;
-    const fehlt = a => !('tage' in a) && meine.AUFGABEN.some(m => m.tage && m.titel === a.titel);
-    if (!state.aufgaben.some(fehlt)) return state;
+    const vorlage = (a, feld) => (feld in a ? null : meine.AUFGABEN.find(m => m[feld] && m.titel === a.titel));
+    if (!state.aufgaben.some(a => NACHTRAG.some(feld => vorlage(a, feld)))) return state;
     const s = kopie(state);
     for (const a of s.aufgaben) {
-      if (fehlt(a)) a.tage = kopie(meine.AUFGABEN.find(m => m.tage && m.titel === a.titel).tage);
+      for (const feld of NACHTRAG) {
+        const m = vorlage(a, feld);
+        if (m) a[feld] = kopie(m[feld]);
+      }
     }
     return s;
   }
 
-  const api = { vorschlag, neu, aendere, groessenAus, loesche, dran, nochNicht, abgenommen, reinwerfen, aufraeumen, zurueckholen, meineEinsetzen, nachtragen };
+  const api = { vorschlag, neu, aendere, groessenAus, loesche, dran, nochNicht, abgenommen, reinwerfen, aufraeumen, zurueckholen, meineEinsetzen, nachtragen, ansicht, setzePlan, planTage };
   root.AH = root.AH || {};
   root.AH.aufgaben = api;
   if (typeof module !== 'undefined' && module.exports) module.exports = api;

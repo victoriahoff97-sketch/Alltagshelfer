@@ -49,6 +49,27 @@
     },
   };
 
+  // Kommende Tage einer Aufgabe mit Varianten: je Tag eine Fassung oder frei.
+  app.bildschirme.plan = {
+    zeichne(el, daten) {
+      const aufgabe = daten && app.state.aufgaben.find(a => a.id === daten.id);
+      if (!aufgabe || !aufgabe.varianten) return app.zeige('aufgaben');
+      const plan = app.state.plan || {};
+      const wahl = aufgabe.varianten.liste.map(v => ({ id: v.id, name: v.name })).concat({ id: 'frei', name: 'frei' });
+      const datum = tag => new Date(tag + 'T12:00:00').toLocaleDateString('de-DE', { weekday: 'short', day: 'numeric', month: 'numeric' });
+      el.append(
+        h('h1', { class: 'titel' }, 'Tage im Voraus'),
+        h('p', { class: 'leise' }, 'Trag ein, was du schon weißt. Bei leeren Tagen fragt die App am Abend vorher.'),
+        h('div', { class: 'plan' }, AH.aufgaben.planTage(aufgabe, app.heute(), 14).map(tag =>
+          h('div', { class: 'plan-zeile', role: 'group', 'aria-label': datum(tag) },
+            h('span', { class: 'plan-tag' }, datum(tag)),
+            wahl.map(w => h('button', { class: 'plan-knopf', 'aria-pressed': String(plan[tag] === w.id),
+              // noch einmal antippen nimmt die Wahl zurück
+              onclick: () => app.setze(AH.aufgaben.setzePlan(app.state, tag, plan[tag] === w.id ? null : w.id)) }, w.name))))),
+        h('div', { class: 'reihe' }, h('button', { class: 'knopf knopf-haupt', onclick: () => app.zeige('jetzt') }, 'Fertig')));
+    },
+  };
+
   function feld(id, beschriftung, attrs) {
     const eingabe = h('input', Object.assign({ class: 'feld', id, type: 'text' }, attrs));
     return { eingabe, zeile: h('div', { class: 'feldzeile' }, h('label', { for: id }, beschriftung), eingabe) };
@@ -103,7 +124,8 @@
         aufgabe && aufgabe.irgendwann ? h('div', { class: 'reihe' },
           h('button', { class: 'knopf knopf-haupt', onclick: () => zurLste(AH.aufgaben.zurueckholen(app.state, aufgabe.id, app.heute())) }, 'Zurückholen')) : null,
         aufgabe && !aufgabe.irgendwann ? h('div', { class: 'reihe' },
-          h('button', { class: 'knopf knopf-haupt', onclick: () => app.bildschirme.jetzt.starte(aufgabe) }, 'Jetzt machen')) : null,
+          h('button', { class: 'knopf knopf-haupt', onclick: () => app.bildschirme.jetzt.starte(aufgabe) }, 'Jetzt machen'),
+          aufgabe.varianten ? h('button', { class: 'knopf', onclick: () => app.zeige('plan', { id: aufgabe.id }) }, 'Tage eintragen') : null) : null,
         titel.zeile,
         fehler,
         h('div', { class: 'feldzeile' }, h('label', { for: 'f-bereich' }, 'Bereich'), bereich),

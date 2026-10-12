@@ -45,7 +45,9 @@
       const lauf = app.laeuft;
       const aufgabe = lauf && app.state.aufgaben.find(a => a.id === lauf.aufgabeId);
       if (!aufgabe) return zurueck();
-      const g = aufgabe.groessen[lauf.groesse];
+      const g = AH.aufgaben.ansicht(aufgabe, lauf.groesse, app.state, lauf.tag || app.heute());
+      // Ist bei einer Aufgabe mit Varianten noch nichts gewählt, stellt die Karte erst die Frage.
+      if (g.frage) return zurueck();
       const b = app.bereich(aufgabe.bereich);
       const dauerMs = g.min * 60000;
       let gesperrt = false;
@@ -62,7 +64,7 @@
       };
 
       // Schritte zum Abhaken; die Haken überstehen ein Neuzeichnen.
-      const schritte = aufgabe.schritte && aufgabe.schritte[lauf.groesse];
+      const schritte = g.schritte;
       lauf.haken = lauf.haken || [];
       const schrittliste = schritte && schritte.length ? h('div', { class: 'schritte', role: 'group', 'aria-label': 'Schritte' },
         schritte.map((text, i) => {
@@ -87,7 +89,7 @@
       el.append(
         h('section', { class: 'karte karte-sticker b-' + b.farbe },
           AH.sticker.maskottchen(aufgabe.bereich),
-          h('p', { class: 'karte-bereich' }, aufgabe.titel),
+          h('p', { class: 'karte-bereich' }, aufgabe.titel + (g.variante ? ' · ' + g.variante : '')),
           h('h1', { class: 'karte-text' }, g.text),
           aufgabe.fertig ? h('p', { class: 'karte-zusatz' }, aufgabe.fertig) : null,
           schrittliste,

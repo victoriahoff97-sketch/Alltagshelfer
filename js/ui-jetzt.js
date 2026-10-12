@@ -56,7 +56,8 @@
   }
 
   function karteAufgabe(aufgabe, groesse, slot) {
-    const g = aufgabe.groessen[groesse];
+    // Text, Dauer und Schritte der Größe; bei Aufgaben mit Varianten die Fassung für morgen
+    const g = AH.aufgaben.ansicht(aufgabe, groesse, app.state, app.heute());
     const b = app.bereich(aufgabe.bereich);
     const anders = () => {
       let s = AH.auswahl.gezeigt(app.state, aufgabe);
@@ -77,8 +78,28 @@
       AH.aufgaben.nochNicht(AH.auswahl.gezeigt(app.state, aufgabe), aufgabe.id, app.heute())));
 
     // Die Farbe und das Maskottchen zeigen den Bereich, die Marke nennt die Aufgabe.
-    const marke = aufgabe.titel + (slot ? ' · ' + RUNDEN_TEXT[slot] : '') + (aufgabe.art === 'muss' ? ' · Muss' : '');
+    const marke = aufgabe.titel + (g.variante ? ' · ' + g.variante : '') + (slot ? ' · ' + RUNDEN_TEXT[slot] : '') + (aufgabe.art === 'muss' ? ' · Muss' : '');
+    const planen = () => app.zeige('plan', { id: aufgabe.id });
+
+    // Für morgen ist noch keine Variante gewählt: erst die Frage, dann die Schritte.
+    if (g.frage) {
+      const waehle = wert => () => app.setze(AH.tagesform.ruhe(AH.aufgaben.setzePlan(app.state, g.zieltag, wert)));
+      return [
+        h('section', { class: 'karte karte-sticker blase b-' + b.farbe },
+          AH.sticker.maskottchen(aufgabe.bereich),
+          h('p', { class: 'karte-bereich' }, marke),
+          h('h1', { class: 'karte-text' }, g.frage),
+          h('div', { class: 'reihe' },
+            g.wahl.map((w, i) => h('button', { class: 'knopf' + (i === 0 ? ' knopf-haupt' : ''), onclick: waehle(w.id) }, w.name)))),
+        h('div', { class: 'reihe' },
+          h('button', { class: 'knopf knopf-still', onclick: waehle('frei') }, 'Morgen frei'),
+          h('button', { class: 'knopf knopf-still', onclick: anders }, 'Etwas anderes')),
+        h('div', { class: 'reihe' }, h('button', { class: 'knopf knopf-still', onclick: planen }, 'Tage im Voraus eintragen')),
+      ];
+    }
+
     const dritte = [
+      aufgabe.varianten ? h('button', { class: 'knopf knopf-still', onclick: planen }, 'Doch anders') : null,
       aufgabe.geteilt ? h('button', { class: 'knopf knopf-still', onclick: abgenommen }, 'Hat schon jemand gemacht') : null,
       !aufgabe.fest && !aufgabe.einmal && (aufgabe.rhythmus || 1) > 1
         ? h('button', { class: 'knopf knopf-still', onclick: nochNicht }, 'Noch nicht nötig') : null,

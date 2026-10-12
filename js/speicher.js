@@ -13,6 +13,7 @@
       heute: { tag, nicht: [], spaeter: [], stuecke: 0, letzterBereich: null },
       zimmer: [],
       wesen: 'otter',
+      plan: {}, // je Tag die gewählte Variante oder 'frei'
     };
   }
 
@@ -30,10 +31,20 @@
   const textOderLeer = x => fehlt(x) || istText(x);
   const textliste = x => Array.isArray(x) && x.every(istText);
 
+  const groessenOk = g => istObjekt(g) && GROESSEN.every(x => istObjekt(g[x]) && istText(g[x].text) && Number.isFinite(g[x].min) && g[x].min > 0);
+  const schritteOk = s => istObjekt(s) && GROESSEN.every(x => textliste(s[x]));
+  function variantenOk(v) {
+    if (fehlt(v)) return true;
+    return istObjekt(v) && istText(v.frage) && Array.isArray(v.liste) && v.liste.every(x =>
+      istObjekt(x) && istText(x.id) && istText(x.name) && groessenOk(x.groessen) && schritteOk(x.schritte) &&
+      (fehlt(x.zusatz) || (istObjekt(x.zusatz) && textliste(x.zusatz.schritte) && textliste(x.zusatz.nichtNach))));
+  }
+
   // Die Felder aus Etappe 2 dürfen fehlen (ältere Stände), aber nicht verbogen sein.
   function zusatzOk(a) {
     return (fehlt(a.zeiten) || (Array.isArray(a.zeiten) && a.zeiten.every(z => RUNDEN.includes(z)))) &&
       (fehlt(a.tage) || (Array.isArray(a.tage) && a.tage.every(t => Number.isInteger(t) && t >= 0 && t <= 6))) &&
+      variantenOk(a.varianten) &&
       (fehlt(a.runden) || (istObjekt(a.runden) && Object.values(a.runden).every(istText))) &&
       (fehlt(a.schritte) || (istObjekt(a.schritte) && GROESSEN.every(g => textliste(a.schritte[g])))) &&
       (a.rhythmus === undefined || (Number.isFinite(a.rhythmus) && a.rhythmus >= 1)) &&
@@ -71,6 +82,7 @@
       obj.zimmer.every(z => istObjekt(z) && istText(z.bereich) && istText(z.stueck) && typeof z.besonders === 'boolean') &&
       (obj.wesen === undefined || WESEN.includes(obj.wesen)) &&
       istObjekt(obj.form) && STUFEN.includes(obj.form.stufe) &&
+      (obj.plan === undefined || (istObjekt(obj.plan) && Object.values(obj.plan).every(istText))) &&
       istObjekt(obj.heute) && istText(obj.heute.tag) &&
       Array.isArray(obj.heute.nicht) && Array.isArray(obj.heute.spaeter) && Number.isFinite(obj.heute.stuecke);
   }
