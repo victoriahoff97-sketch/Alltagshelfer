@@ -2,7 +2,7 @@
 // Die App darf dort nur Dateien sehen, die sie selbst angelegt hat.
 (function (root) {
   // Die Client-ID aus der Google Cloud Console (APIs & Dienste → Anmeldedaten). Sie ist kein Geheimnis.
-  const CLIENT_ID = '';
+  const CLIENT_ID = '850695757587-mar1lgnc51368an2hbu6r003lua41vj4.apps.googleusercontent.com';
   const DATEI = 'alltagshelfer-sicherung.json';
   const BEREICH = 'https://www.googleapis.com/auth/drive.file';
   const MERKER = 'alltagshelfer.drive'; // je Gerät: verbunden, Datei, letztes Sichern
