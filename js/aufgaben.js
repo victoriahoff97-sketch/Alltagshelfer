@@ -116,12 +116,27 @@
   }
 
   // „Noch nicht nötig“: die Aufgabe meldet sich in ein paar Tagen wieder.
-  function nochNicht(state, id, tag) {
+  // tage: wie lange die Aufgabe ruht; ohne Angabe ein paar Tage
+  function nochNicht(state, id, tag, tage) {
     if (!state.aufgaben.some(a => a.id === id)) return state;
     const s = kopie(state);
     const aufgabe = s.aufgaben.find(a => a.id === id);
-    aufgabe.ruhtBis = zeit.plusTage(tag, (aufgabe.rhythmus || 1) > 7 ? 3 : 2);
+    aufgabe.ruhtBis = zeit.plusTage(tag, tage >= 1 ? Math.round(tage) : KURZ(aufgabe));
     return s;
+  }
+
+  const KURZ = aufgabe => ((aufgabe.rhythmus || 1) > 7 ? 3 : 2);
+
+  // Die Wege für „Wann wieder?“: ein paar Tage, eine Woche, zwei Wochen, ein ganzer Rhythmus.
+  function ruheWege(aufgabe) {
+    const r = aufgabe.rhythmus || 1;
+    const kurz = KURZ(aufgabe);
+    const wege = [{ tage: kurz, text: 'In ' + kurz + ' Tagen' }];
+    for (const [tage, text] of [[7, 'In einer Woche'], [14, 'In 2 Wochen']]) {
+      if (tage <= r && tage > kurz) wege.push({ tage, text });
+    }
+    if (r > kurz && !wege.some(w => w.tage === r)) wege.push({ tage: r, text: 'In ' + r + ' Tagen' });
+    return wege;
   }
 
   // „Hat schon jemand gemacht“: erledigt, ohne dass im Zimmer etwas wächst.
@@ -243,7 +258,7 @@
     return s;
   }
 
-  const api = { vorschlag, neu, aendere, groessenAus, loesche, dran, nochNicht, abgenommen, reinwerfen, setzeArt, aufraeumen, zurueckholen, meineEinsetzen, nachtragen, ansicht, setzePlan, planTage };
+  const api = { vorschlag, neu, aendere, groessenAus, loesche, dran, nochNicht, ruheWege, abgenommen, reinwerfen, setzeArt, aufraeumen, zurueckholen, meineEinsetzen, nachtragen, ansicht, setzePlan, planTage };
   root.AH = root.AH || {};
   root.AH.aufgaben = api;
   if (typeof module !== 'undefined' && module.exports) module.exports = api;

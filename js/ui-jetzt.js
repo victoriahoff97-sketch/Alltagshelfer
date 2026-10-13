@@ -79,8 +79,13 @@
     };
     const abgenommen = () => (gewaehlt = null, app.setze(AH.auswahl.festZurueck(AH.tagesform.ruhe(
       AH.aufgaben.abgenommen(AH.auswahl.gezeigt(app.state, aufgabe), aufgabe.id, app.heute(), slot)))));
-    const nochNicht = () => (gewaehlt = null, app.setze(AH.tagesform.ruhe(
-      AH.aufgaben.nochNicht(AH.auswahl.gezeigt(app.state, aufgabe), aufgabe.id, app.heute()))));
+    const nochNicht = () => app.frage('Wann wieder?', AH.aufgaben.ruheWege(aufgabe).map((w, i) => ({
+      text: w.text, haupt: i === 0,
+      tu: () => {
+        gewaehlt = null;
+        app.setze(AH.tagesform.ruhe(AH.aufgaben.nochNicht(AH.auswahl.gezeigt(app.state, aufgabe), aufgabe.id, app.heute(), w.tage)));
+      },
+    })).concat({ text: 'Abbrechen' }), aufgabe.titel);
 
     // Die Farbe und das Maskottchen zeigen den Bereich, die Marke nennt die Aufgabe.
     const marke = aufgabe.titel + (g.variante ? ' · ' + g.variante : '') + (slot ? ' · ' + RUNDEN_TEXT[slot] : '') + (aufgabe.art === 'muss' ? ' · Muss' : '');
