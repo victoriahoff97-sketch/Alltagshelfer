@@ -133,6 +133,19 @@
         titel.zeile,
         fehler,
         h('div', { class: 'feldzeile' }, h('label', { for: 'f-bereich' }, 'Bereich'), bereich),
+        // Reingeworfenes: „Muss“ und „Will“ lassen sich jederzeit tauschen; der Tipp gilt sofort.
+        aufgabe && aufgabe.art ? h('div', { class: 'feldzeile' },
+          h('span', { id: 'f-art-titel' }, 'Muss oder Will?'),
+          h('div', { class: 'form', role: 'group', 'aria-labelledby': 'f-art-titel' },
+            [['muss', 'Muss'], ['will', 'Will']].map(([art, text]) => h('button', {
+              class: 'form-knopf', type: 'button', 'data-art': art, 'aria-pressed': String(aufgabe.art === art),
+              onclick: e => {
+                app.state = AH.aufgaben.setzeArt(app.state, aufgabe.id, art);
+                app.sichere();
+                for (const k of e.currentTarget.parentNode.children) k.setAttribute('aria-pressed', String(k.dataset.art === art));
+              },
+            }, text))),
+          h('p', { class: 'leise' }, '„Muss“ bleibt stehen, bis es erledigt ist. „Will“ darf liegen bleiben.')) : null,
         mitRunden || einmalig ? null : h('div', { class: 'feldzeile' },
           h('label', { for: 'f-rhythmus' }, 'Wie oft?'),
           h('div', { class: 'reihe reihe-min' }, h('span', { class: 'leise' }, 'alle'), rhythmus, h('span', { class: 'leise' }, 'Tage (1 heißt täglich)'))),

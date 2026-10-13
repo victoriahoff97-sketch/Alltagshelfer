@@ -159,7 +159,10 @@
   function setzeArt(state, id, art) {
     if (!state.aufgaben.some(a => a.id === id) || (art !== 'muss' && art !== 'will')) return state;
     const s = kopie(state);
-    s.aufgaben.find(a => a.id === id).art = art;
+    const aufgabe = s.aufgaben.find(a => a.id === id);
+    aufgabe.art = art;
+    // Ein „Muss“ liegt nie bei „Vielleicht irgendwann“.
+    if (art === 'muss') aufgabe.irgendwann = false;
     return s;
   }
 

@@ -1,6 +1,6 @@
 // Service Worker der Web-Fassung: hält die App auf dem Gerät, damit sie ohne Netz startet.
 // Version und Dateiliste trägt tools/web.js beim Bauen ein.
-const VERSION = '4b58b0c396';
+const VERSION = 'a943239a2b';
 const CACHE = 'alltagshelfer-' + VERSION;
 const DATEIEN = ['./', "index.html", "manifest.webmanifest", "css/app.css", "icons/icon-180.png", "icons/icon-192.png", "icons/icon-512.png", "js/app.js", "js/aufgaben.js", "js/auswahl.js", "js/drive.js", "js/offen.js", "js/pakete.js", "js/speicher.js", "js/start.js", "js/tagesform.js", "js/ui-aufgaben.js", "js/ui-einstellungen.js", "js/ui-jetzt.js", "js/ui-sticker.js", "js/ui-timer.js", "js/ui-zimmer.js", "js/wesen.js", "js/zeit.js", "js/zimmer.js", "js/zimmerbild.js"];
 
