@@ -1,138 +1,160 @@
-// Laden, Speichern und Sicherung des einen Zustandsobjekts.
+// Zustand Version 2 (Aufgaben, Ziele, Gewohnheiten, Eingang, Routinen, Schwerer Tag):
+// Form, Prüfung, Laden, Speichern und Sicherung. Der Zustand wird nie verändert,
+// Änderungen geben einen neuen zurück.
 (function (root) {
-  const SCHLUESSEL = 'alltagshelfer.v1';
+  const SCHLUESSEL = 'alltagshelfer.v2';
+  const WIDGET_SCHLUESSEL = 'alltagshelfer.widget';
+  const KAPUTT_SCHLUESSEL = SCHLUESSEL + '.kaputt';
+  // Die alte App (v1) lag nur im Browser; ihr Schlüssel wird nur gelesen, nie geändert oder gelöscht.
+  const ALT_SCHLUESSEL = 'alltagshelfer.v1';
+  const ALT_GEFRAGT_SCHLUESSEL = ALT_SCHLUESSEL + '.gefragt'; // „Übernehmen“ oder „Nein danke“ gewählt
 
-  function leer(tag) {
+  function leer() {
     return {
-      v: 1,
-      naechsteNr: 1,
-      aufgaben: [],
-      pakete: [],
-      offen: [],
-      form: { stufe: 'mittel', andersFolge: 0 },
-      heute: { tag, nicht: [], spaeter: [], stuecke: 0, letzterBereich: null },
-      zimmer: [],
-      wesen: 'axolotl',
-      plan: {}, // je Tag die gewählte Variante oder 'frei'
+      version: 2,
+      nr: 1,
+      muss: [],
+      ziele: [],
+      gewohnheiten: [],
+      eingang: [],
+      routinen: { wohnung: [], abend: [] },
+      schwer: null,
     };
   }
 
-  function istObjekt(x) {
-    return !!x && typeof x === 'object' && !Array.isArray(x);
-  }
-
-  const GROESSEN = ['winzig', 'normal', 'gross'];
-  const STUFEN = ['klein', 'mittel', 'gross'];
-  const WESEN = ['axolotl', 'pilz'];
-  const WESEN_FRUEHER = ['otter']; // gab es einmal, alte Stände bleiben lesbar
+  const istObjekt = x => !!x && typeof x === 'object' && !Array.isArray(x);
   const istText = x => typeof x === 'string';
+  const istTag = x => istText(x) && /^\d{4}-\d{2}-\d{2}$/.test(x);
+  const liste = (x, ok) => Array.isArray(x) && x.every(ok);
 
-  const RUNDEN = ['morgens', 'abends', 'nacht'];
-  const fehlt = x => x === undefined || x === null;
-  const textOderLeer = x => fehlt(x) || istText(x);
-  const textliste = x => Array.isArray(x) && x.every(istText);
+  const mussOk = e => istObjekt(e) && istText(e.id) && istText(e.text) && (e.frist === null || istTag(e.frist)) && istText(e.angelegt);
+  const zielOk = e => istObjekt(e) && istText(e.id) && istText(e.text) && istText(e.woche);
+  const gewohnheitOk = e => istObjekt(e) && istText(e.id) && istText(e.name) &&
+    Number.isInteger(e.ziel) && e.ziel >= 1 && e.ziel <= 7 && istText(e.woche) && Number.isInteger(e.anzahl) && e.anzahl >= 0;
+  const eingangOk = e => istObjekt(e) && istText(e.id) && istText(e.text) && istText(e.angelegt);
+  // Schwerer Tag: ein verbogener Lauf würde bei jedem Zeichnen werfen
+  const laufOk = l => istObjekt(l) && Number.isInteger(l.von) && l.von >= 0 && liste(l.offen, istText) && liste(l.einmalVerschoben, istText);
+  const schwerOk = s => s === null ||
+    (istObjekt(s) && istText(s.tag) && typeof s.an === 'boolean' && istObjekt(s.laeufe) && Object.values(s.laeufe).every(laufOk));
 
-  const groessenOk = g => istObjekt(g) && GROESSEN.every(x => istObjekt(g[x]) && istText(g[x].text) && Number.isFinite(g[x].min) && g[x].min > 0);
-  const schritteOk = s => istObjekt(s) && GROESSEN.every(x => textliste(s[x]));
-  function variantenOk(v) {
-    if (fehlt(v)) return true;
-    return istObjekt(v) && istText(v.frage) && Array.isArray(v.liste) && v.liste.every(x =>
-      istObjekt(x) && istText(x.id) && istText(x.name) && groessenOk(x.groessen) && schritteOk(x.schritte) &&
-      (fehlt(x.zusatz) || (istObjekt(x.zusatz) && textliste(x.zusatz.schritte) && textliste(x.zusatz.nichtNach))));
-  }
-
-  // Die Felder aus Etappe 2 dürfen fehlen (ältere Stände), aber nicht verbogen sein.
-  function zusatzOk(a) {
-    return (fehlt(a.zeiten) || (Array.isArray(a.zeiten) && a.zeiten.every(z => RUNDEN.includes(z)))) &&
-      (fehlt(a.tage) || (Array.isArray(a.tage) && a.tage.every(t => Number.isInteger(t) && t >= 0 && t <= 6))) &&
-      variantenOk(a.varianten) &&
-      (fehlt(a.runden) || (istObjekt(a.runden) && Object.values(a.runden).every(istText))) &&
-      (fehlt(a.schritte) || (istObjekt(a.schritte) && GROESSEN.every(g => textliste(a.schritte[g])))) &&
-      (a.rhythmus === undefined || (Number.isFinite(a.rhythmus) && a.rhythmus >= 1)) &&
-      textOderLeer(a.ruhtBis) && textOderLeer(a.angelegt) && textOderLeer(a.danach) &&
-      (fehlt(a.art) || a.art === 'muss' || a.art === 'will');
-  }
-
-  function aufgabeOk(a) {
-    return istObjekt(a) && istText(a.id) && Number.isFinite(a.nr) && istText(a.bereich) && istText(a.titel) &&
-      istObjekt(a.groessen) &&
-      GROESSEN.every(g => istObjekt(a.groessen[g]) && istText(a.groessen[g].text) &&
-        Number.isFinite(a.groessen[g].min) && a.groessen[g].min > 0) &&
-      istText(a.fertig) && istText(a.notiz) && (a.zuletzt === null || istText(a.zuletzt)) && zusatzOk(a);
-  }
-
-  // Prüft die ganze Form, damit eine fremde Datei die Bildschirme nicht zum Absturz bringt.
   function pruefe(obj) {
-    return formOk(obj) && stimmig(obj);
+    if (!istObjekt(obj) || obj.version !== 2 || !Number.isInteger(obj.nr) || obj.nr < 1) return false;
+    if (!liste(obj.muss, mussOk) || !liste(obj.ziele, zielOk) || !liste(obj.gewohnheiten, gewohnheitOk) || !liste(obj.eingang, eingangOk)) return false;
+    if (!istObjekt(obj.routinen) || !liste(obj.routinen.wohnung, istText) || !liste(obj.routinen.abend, istText)) return false;
+    if (!schwerOk(obj.schwer)) return false;
+    const ids = [].concat(obj.muss, obj.ziele, obj.gewohnheiten, obj.eingang).map(e => e.id);
+    return new Set(ids).size === ids.length;
   }
 
-  // Ein Stand kann die richtige Form haben und sich trotzdem selbst widersprechen.
-  function stimmig(obj) {
-    const ids = obj.aufgaben.map(a => a.id);
-    return new Set(ids).size === ids.length &&
-      obj.aufgaben.every(a => a.nr < obj.naechsteNr) &&
-      obj.offen.every(o => ids.includes(o.aufgabeId));
+  // Vergibt die nächste Nummer; die id besteht aus Vorsilbe ('m', 'z', 'g', 'e') und Nummer.
+  function neueId(state, vorsilbe) {
+    const neu = structuredClone(state);
+    const id = vorsilbe + neu.nr;
+    neu.nr += 1;
+    return { state: neu, id };
   }
 
-  function formOk(obj) {
-    return istObjekt(obj) && obj.v === 1 && Number.isFinite(obj.naechsteNr) &&
-      ['aufgaben', 'offen', 'zimmer', 'pakete'].every(k => Array.isArray(obj[k])) &&
-      obj.aufgaben.every(aufgabeOk) &&
-      obj.pakete.every(istText) &&
-      obj.offen.every(o => istObjekt(o) && istText(o.aufgabeId) && GROESSEN.includes(o.groesse) && istText(o.satz)) &&
-      obj.zimmer.every(z => istObjekt(z) && istText(z.bereich) && istText(z.stueck) && typeof z.besonders === 'boolean') &&
-      (obj.wesen === undefined || WESEN.includes(obj.wesen) || WESEN_FRUEHER.includes(obj.wesen)) &&
-      istObjekt(obj.form) && STUFEN.includes(obj.form.stufe) &&
-      (obj.plan === undefined || (istObjekt(obj.plan) && Object.values(obj.plan).every(istText))) &&
-      istObjekt(obj.heute) && istText(obj.heute.tag) &&
-      Array.isArray(obj.heute.nicht) && Array.isArray(obj.heute.spaeter) && Number.isFinite(obj.heute.stuecke);
-  }
-
-  function ausText(text) {
+  function lade(ort) {
     try {
-      const state = JSON.parse(text);
-      if (!pruefe(state)) return { ok: false };
-      // Stände aus der Zeit vor der Wesenwahl oder mit einem Wesen, das es nicht mehr gibt
-      if (!WESEN.includes(state.wesen)) state.wesen = 'axolotl';
-      return { ok: true, state };
+      const roh = ort.getItem(SCHLUESSEL);
+      if (roh === null || roh === undefined) return null;
+      const obj = JSON.parse(roh);
+      return pruefe(obj) ? obj : null;
     } catch (e) {
-      return { ok: false };
+      return null;
     }
   }
 
-  // Wer eine Sicherung einspielt, ist schon eingezogen: die Begrüßung kommt nicht noch einmal.
-  function eingespielt(state) {
-    return Object.assign({}, state, { willkommen: true });
-  }
-
-  function alsText(state) {
-    return JSON.stringify(state);
-  }
-
-  function lade(storage, tag) {
-    let text;
+  // Laden beim Start, ohne gute Daten zu gefährden. Ergebnis: { state, speichern }.
+  //  - state: der gültige Zustand, sonst null (die Oberfläche nimmt dann einen leeren)
+  //  - speichern: false, wenn ein Speichern jetzt Daten zerstören könnte: der Speicher ließ sich nicht lesen,
+  //    oder Unlesbares konnte nicht erst unter KAPUTT_SCHLUESSEL beiseitegelegt werden.
+  function ladeGesichert(ort) {
+    let roh;
     try {
-      text = storage.getItem(SCHLUESSEL);
+      roh = ort.getItem(SCHLUESSEL);
     } catch (e) {
-      return { state: leer(tag), hinweis: 'kein-speicher' };
+      return { state: null, speichern: false };
     }
-    if (text === null || text === undefined) return { state: leer(tag), hinweis: null };
-    const r = ausText(text);
-    if (r.ok) return { state: r.state, hinweis: null };
-    try { storage.setItem(SCHLUESSEL + '.alt', text); } catch (e) { /* alter Stand geht verloren */ }
-    return { state: leer(tag), hinweis: 'beschaedigt' };
+    if (roh === null || roh === undefined) return { state: null, speichern: true };
+    try {
+      const obj = JSON.parse(roh);
+      if (pruefe(obj)) return { state: obj, speichern: true };
+    } catch (e) { /* unlesbar, siehe unten */ }
+    try {
+      ort.setItem(KAPUTT_SCHLUESSEL, roh);
+      return { state: null, speichern: true };
+    } catch (e) {
+      return { state: null, speichern: false };
+    }
   }
 
-  function speichere(storage, state) {
+  function speichere(ort, state) {
     try {
-      storage.setItem(SCHLUESSEL, alsText(state));
+      ort.setItem(SCHLUESSEL, JSON.stringify(state));
       return true;
     } catch (e) {
       return false;
     }
   }
 
-  const api = { SCHLUESSEL, leer, pruefe, lade, speichere, alsText, ausText, eingespielt };
+  function alsSicherung(state) {
+    return JSON.stringify(state, null, 2);
+  }
+
+  // Aus der alten App (Format v1) übernehmen wir nur die Texte der Aufgaben, die Muss oder Will waren, in den Eingang.
+  function ausAltemFormat(obj, heute) {
+    let z = leer();
+    for (const a of obj.aufgaben) {
+      if (!istObjekt(a) || !istText(a.titel) || (a.art !== 'muss' && a.art !== 'will')) continue;
+      const n = neueId(z, 'e');
+      z = n.state;
+      z.eingang.push({ id: n.id, text: a.titel, angelegt: a.angelegt || heute });
+    }
+    return z;
+  }
+
+  // Liest eine Sicherung. Gültiges v2 wird übernommen, das alte v1 wird umgewandelt, alles andere ergibt null.
+  function ausSicherung(text, heute) {
+    let obj;
+    try {
+      obj = JSON.parse(text);
+    } catch (e) {
+      return null;
+    }
+    if (istObjekt(obj) && obj.v === 1 && Array.isArray(obj.aufgaben)) {
+      const z = ausAltemFormat(obj, heute);
+      return pruefe(z) ? z : null;
+    }
+    return pruefe(obj) ? obj : null;
+  }
+
+  // Die Startseite bietet die alten Einträge nur an, solange der Zustand keine Einträge hat
+  // (Routinen zählen nicht), es alte Daten gibt und noch niemand gewählt hat.
+  function altesAnbieten(state, altRoh, gefragt) {
+    const eintraege = state.muss.length + state.ziele.length + state.gewohnheiten.length + state.eingang.length;
+    return !gefragt && typeof altRoh === 'string' && altRoh !== '' && eintraege === 0;
+  }
+
+  // Die alten Einträge kommen mit neuen ids in den Eingang; die Routinen nur, wenn es noch keine gibt.
+  // null, wenn sich die alten Daten nicht lesen lassen.
+  function altesUebernehmen(state, altRoh, heute) {
+    const alt = ausSicherung(altRoh, heute);
+    if (!alt) return null;
+    let z = structuredClone(state);
+    for (const e of alt.eingang) {
+      const n = neueId(z, 'e');
+      z = n.state;
+      z.eingang.push({ id: n.id, text: e.text, angelegt: e.angelegt });
+    }
+    if (z.routinen.wohnung.length + z.routinen.abend.length === 0) z.routinen = structuredClone(alt.routinen);
+    return z;
+  }
+
+  const api = {
+    SCHLUESSEL, WIDGET_SCHLUESSEL, KAPUTT_SCHLUESSEL, ALT_SCHLUESSEL, ALT_GEFRAGT_SCHLUESSEL,
+    leer, pruefe, neueId, lade, ladeGesichert, speichere, alsSicherung, ausSicherung, altesAnbieten, altesUebernehmen,
+  };
   root.AH = root.AH || {};
   root.AH.speicher = api;
   if (typeof module !== 'undefined' && module.exports) module.exports = api;

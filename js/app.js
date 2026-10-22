@@ -1,4 +1,4 @@
-// Hält den Zustand, speichert ihn und schaltet zwischen den Bildschirmen.
+// Hält den Zustand, speichert ihn (samt Widget-Datei) und schaltet zwischen den Bildschirmen.
 (function (root) {
   const AH = root.AH;
 
@@ -18,171 +18,249 @@
     return el;
   }
 
-  function speicherOrt() {
-    try { return root.localStorage; } catch (e) { return { getItem() { throw e; }, setItem() { throw e; } }; }
+  // Kleines Symbol aus festem SVG-Text (nie mit Nutzertext füttern).
+  function ikon(svg) {
+    const vorlage = document.createElement('template');
+    vorlage.innerHTML = svg;
+    return vorlage.content.firstElementChild;
   }
 
-  const LEISTE = [
-    { name: 'jetzt', text: 'Jetzt' },
-    { name: 'zimmer', text: 'Zimmer' },
-    { name: 'aufgaben', text: 'Aufgaben', auch: 'aufgabe' },
-    { name: 'sicherung', text: 'Sicherung' },
-  ];
+  const FESTE_ZEIT = AH.ablage.festeZeit(root.location ? root.location.search : '');
+  const RUHE_MS = 400; // Klick-Ruhe nach einer Änderung (gegen Doppeltippen)
 
   const app = {
     h,
+    ikon,
     state: null,
-    hinweis: null,
-    bildschirme: {},
-    aktuell: 'jetzt',
+    aktuell: 'start',
     daten: null,
-    laeuft: null, // { aufgabeId, groesse, slot, start, haken }
+    bildschirme: {},
+    leisteTimer: null,
+    zuletzt: null,
+    gesperrt: false, // true: Speichern könnte gute Daten zerstören, der Zustand bleibt nur im Programm
+    angewandt: 0, // so viele Aktionen vom Anfang der Schlange stecken schon in state, sind aber nicht bestätigt
+    marke: '', // zeitMarke() beim letzten Zeichnen nach Laden
+    ruheBis: 0, // bis dahin (Date.now()) zählen Klicks in #app nicht, siehe setze
 
-    // Der Tag beginnt um 4 Uhr früh; stunde() läuft entsprechend von 4 bis 27.
+    // Die Uhr; mit ?zeit=2026-10-22T20:30 in der URL steht sie fest (zum Prüfen in der Vorschau).
+    jetzt() {
+      return FESTE_ZEIT ? new Date(FESTE_ZEIT.getTime()) : new Date();
+    },
+
+    // Der Tag beginnt um 4 Uhr früh.
     heute() {
-      return AH.zeit.tagUndStunde(new Date()).tag;
+      return AH.zeit.tagUndStunde(app.jetzt()).tag;
     },
 
-    stunde() {
-      return AH.zeit.tagUndStunde(new Date()).stunde;
-    },
-
-    bereich(id) {
-      return AH.pakete.BEREICHE.find(b => b.id === id) || AH.pakete.BEREICHE[0];
-    },
-
+    // Zustand und Widget-Datei ablegen. true, wenn beides geklappt hat.
     sichere() {
-      if (!AH.speicher.speichere(speicherOrt(), app.state) && !app.hinweis) app.hinweis = 'kein-speicher';
-      AH.drive.geaendert();
+      const ort = AH.ablage.ort();
+      let ok = !app.gesperrt && AH.speicher.speichere(ort, app.state);
+      // Die angewandten Widget-Aktionen sind jetzt mit gespeichert und dürfen aus der Schlange
+      // (auch wenn danach die Widget-Datei scheitert; sonst würden sie später ein zweites Mal angewandt).
+      if (ok && app.angewandt > 0) {
+        AH.ablage.aktionenLeeren(app.angewandt);
+        app.angewandt = 0;
+      }
+      if (ok) {
+        try {
+          ort.setItem(AH.speicher.WIDGET_SCHLUESSEL, JSON.stringify(AH.widgetdaten.baue(app.state, app.jetzt())));
+        } catch (e) {
+          ok = false;
+        }
+      }
+      const hinweis = document.getElementById('hinweis');
+      if (hinweis) hinweis.hidden = ok;
+      return ok;
     },
 
+    // Jede Änderung schließt ein offenes „Rückgängig“: es würde sonst auch diese Änderung zurücknehmen.
+    // Wer danach selbst „Rückgängig“ anbietet, tut das nach dem setze.
+    // Danach kurz Klick-Ruhe: Ein schneller zweiter Tipp träfe sonst den neu gezeichneten Knopf an derselben
+    // Stelle (die nächste Muss-Zeile, „Weg“ beim nächsten Eingang) und schlösse das „Rückgängig“ des ersten.
     setze(neu) {
+      app.leisteZu();
       app.state = neu;
       app.sichere();
       app.zeichne();
+      app.ruheBis = Date.now() + RUHE_MS;
     },
 
+    // In der Einfangphase an #app: schluckt Klicks während der Klick-Ruhe. Nur „click“; die Kacheln der
+    // Gewohnheiten zählen per pointerup und bleiben für schnelle Tipps offen.
+    klickRuhe(e) {
+      if (Date.now() < app.ruheBis) {
+        e.stopPropagation();
+        e.preventDefault();
+      }
+    },
+
+    // Zustand aus dem Speicher holen und die Aktionen der Widgets anwenden.
+    // Ist der Speicher unlesbar oder nicht sicher beschreibbar, bleibt der Zustand nur im Programm
+    // (gesperrt) und überschreibt nichts; beim nächsten Laden wird neu versucht.
+    // Die Aktionen verlassen die Schlange erst, wenn der Zustand mit ihnen gespeichert ist.
+    lade(erstes) {
+      const r = AH.speicher.ladeGesichert(AH.ablage.ort());
+      app.gesperrt = !r.speichern;
+      const ausProgramm = !r.state && !erstes && app.state;
+      const s = r.state || ausProgramm || AH.speicher.leer();
+      const aktionen = AH.ablage.aktionenLesen();
+      // Der Zustand aus dem Programm enthält die zuletzt gelesenen, unbestätigten Aktionen schon.
+      const neu = AH.widgetdaten.wendeAktionenAn(s, aktionen.slice(ausProgramm ? app.angewandt : 0));
+      // Haben die Widgets etwas geändert, passt ein offenes „Rückgängig“ nicht mehr. Sonst bleibt die Leiste
+      // stehen (etwa „Im Eingang“, wenn die Android-Hülle nach der Spracheingabe auffrischen ruft).
+      if (!erstes && JSON.stringify(neu) !== JSON.stringify(app.state)) app.leisteZu();
+      app.state = neu;
+      app.angewandt = aktionen.length;
+      app.sichere();
+    },
+
+    // Unbekannte Namen führen zur Startseite.
     zeige(name, daten) {
-      app.aktuell = name;
+      app.aktuell = app.bildschirme[name] ? name : 'start';
       app.daten = daten || null;
       app.zeichne();
     },
 
-    // true, wenn ein neuer Tag begonnen hat
-    tagPruefen() {
-      const s = AH.aufgaben.aufraeumen(AH.tagesform.neuerTag(app.state, app.heute()), app.heute());
-      if (s === app.state) return false;
-      app.state = s;
-      app.sichere();
+    // Zurück-Taste von Android (die Hülle ruft das auf): zur Startseite, aus der Bearbeitung eines Eintrags
+    // erst zur Liste (wie der Knopf „Zurück“ dort). false: nichts zu tun (Startseite oder Schwerer Tag),
+    // dann schließt die Hülle die App wie bisher.
+    zurueck() {
+      const name = app.welcher();
+      if (name === 'start' || name === 'schwer') return false;
+      if (name === 'alle' && app.daten) app.zeige('alle');
+      else app.zeige('start');
       return true;
     },
 
-    zeichne() {
-      app.tagPruefen();
-      const el = document.getElementById('app');
-      const leiste = document.getElementById('leiste');
-      const bildschirm = app.bildschirme[app.aktuell] || app.bildschirme.jetzt;
-      const gewechselt = app.zuletztGezeichnet !== bildschirm;
-      const fokus = document.activeElement;
-      const fokusText = fokus && (el.contains(fokus) || leiste.contains(fokus)) ? fokus.textContent : null;
-      if (gewechselt && app.zuletztGezeichnet && app.zuletztGezeichnet.verlasse) app.zuletztGezeichnet.verlasse();
-      app.zuletztGezeichnet = bildschirm;
-      el.replaceChildren();
-      bildschirm.zeichne(el, app.daten);
+    // Alte Einträge (v1) gab es nur im Browser. Den alten Text, wenn die Startseite die Übernahme anbieten
+    // soll, sonst null. Der alte Schlüssel wird nur gelesen, nie geändert.
+    altes() {
+      if (AH.ablage.istAndroid()) return null;
+      try {
+        const ort = AH.ablage.ort();
+        const roh = ort.getItem(AH.speicher.ALT_SCHLUESSEL);
+        return AH.speicher.altesAnbieten(app.state, roh, ort.getItem(AH.speicher.ALT_GEFRAGT_SCHLUESSEL) !== null) ? roh : null;
+      } catch (e) {
+        return null;
+      }
+    },
 
-      const ruhig = ['timer', 'geschafft', 'willkommen', 'reinwerfen'].includes(app.aktuell);
-      leiste.hidden = ruhig;
-      leiste.replaceChildren(...LEISTE.map(e => h('button', {
-        class: 'leiste-knopf', 'aria-current': e.name === app.aktuell || e.auch === app.aktuell ? 'page' : null,
-        onclick: () => app.zeige(e.name),
-      }, e.text)));
+    // „Übernehmen“ oder „Nein danke“: die Frage kommt nicht wieder.
+    altesGefragt() {
+      try {
+        AH.ablage.ort().setItem(AH.speicher.ALT_GEFRAGT_SCHLUESSEL, '1');
+      } catch (e) { /* dann fragt die Startseite beim nächsten Mal noch einmal */ }
+    },
+
+    // Ist der Schwerer-Tag-Modus an, gibt es nur diesen Bildschirm.
+    welcher() {
+      if (app.bildschirme.schwer && AH.schwer.istAn(app.state, app.jetzt())) return 'schwer';
+      return app.bildschirme[app.aktuell] ? app.aktuell : 'start';
+    },
+
+    zeichne() {
+      const wurzel = document.getElementById('app');
+      const name = app.welcher();
+      const bildschirm = app.bildschirme[name];
+      const gewechselt = app.zuletzt !== name;
+      const fokus = document.activeElement;
+      const fokusSchluessel = fokus && wurzel.contains(fokus) ? fokus.getAttribute('data-fokus') : null;
+      app.zuletzt = name;
+      wurzel.replaceChildren(bildschirm.zeichne(app.daten));
 
       // Neu gezeichnete Knöpfe sollen den Fokus nicht verlieren.
-      if (!el.contains(document.activeElement)) {
-        const ueberschrift = el.querySelector('h1');
-        const gleicher = fokusText && [...el.querySelectorAll('button'), ...leiste.querySelectorAll('button')]
-          .find(b => b.textContent === fokusText && !b.disabled);
-        if (gewechselt && ueberschrift) {
-          ueberschrift.tabIndex = -1;
-          ueberschrift.focus({ preventScroll: true });
-          root.scrollTo(0, 0);
-        } else if (gleicher) {
-          gleicher.focus({ preventScroll: true });
-        } else if (fokusText && ueberschrift) {
-          // der getippte Knopf ist verschwunden (etwa „Kleiner“ bei winzig)
+      if (gewechselt) {
+        const ueberschrift = wurzel.querySelector('h1');
+        if (ueberschrift) {
           ueberschrift.tabIndex = -1;
           ueberschrift.focus({ preventScroll: true });
         }
+        root.scrollTo(0, 0);
+      } else if (fokusSchluessel) {
+        const gleicher = [...wurzel.querySelectorAll('[data-fokus]')].find(x => x.getAttribute('data-fokus') === fokusSchluessel);
+        if (gleicher) gleicher.focus({ preventScroll: true });
       }
-      app.gezeichnetUm = Date.now();
     },
 
-    // Rückfrage über dem Bildschirm; wege: [{ text, haupt, tu }]
-    frage(text, wege, zusatz) {
-      const vorher = document.activeElement;
-      const hinten = [document.getElementById('app'), document.getElementById('leiste')];
-      const schliesse = () => {
-        schleier.remove();
-        hinten.forEach(x => { x.inert = false; });
-        if (vorher && vorher.isConnected) vorher.focus({ preventScroll: true });
-      };
-      const schleier = h('div', { class: 'schleier', role: 'dialog', 'aria-modal': 'true', 'aria-label': text,
-        onkeydown: e => {
-          const knoepfe = [...schleier.querySelectorAll('button')];
-          if (e.key === 'Escape') {
-            schliesse();
-          } else if (e.key === 'Tab') {
-            const i = knoepfe.indexOf(document.activeElement);
-            e.preventDefault();
-            knoepfe[(i + (e.shiftKey ? -1 : 1) + knoepfe.length) % knoepfe.length].focus();
-          }
-        } },
-        h('div', { class: 'frage' },
-          h('p', { class: 'frage-text' }, text),
-          zusatz ? h('p', { class: 'leise frage-zusatz' }, zusatz) : null,
-          wege.map(w => h('button', {
-            class: 'knopf' + (w.haupt ? ' knopf-haupt' : ''),
-            onclick: () => { schliesse(); if (w.tu) w.tu(); },
-          }, w.text))));
-      hinten.forEach(x => { x.inert = true; });
-      document.querySelector('.rahmen').append(schleier);
-      schleier.querySelector('button').focus();
+    // Kurze Leiste unten; mit knopf = { text, tu } auch mit Knopf.
+    leiste(text, knopf, ms) {
+      const el = document.getElementById('leiste');
+      clearTimeout(app.leisteTimer);
+      el.replaceChildren(h('span', { class: 'leiste-text' }, text));
+      if (knopf) el.append(h('button', { class: 'leiste-knopf', type: 'button', onclick: () => { app.leisteZu(); knopf.tu(); } }, knopf.text));
+      el.hidden = false;
+      app.leisteTimer = setTimeout(app.leisteZu, ms);
+    },
+
+    leisteZu() {
+      const el = document.getElementById('leiste');
+      clearTimeout(app.leisteTimer);
+      el.hidden = true;
+      el.replaceChildren();
+    },
+
+    // Kurze Bestätigung, etwa „Im Eingang“.
+    melde(text) {
+      app.leiste(text, null, 2500);
+    },
+
+    // Nach einer Änderung fünf Sekunden lang „Rückgängig“ anbieten; alterState ist der Zustand davor.
+    rueckgaengig(text, alterState) {
+      app.leiste(text, { text: 'Rückgängig', tu: () => app.setze(alterState) }, 5000);
     },
 
     start() {
-      const r = AH.speicher.lade(speicherOrt(), app.heute());
-      // einmalige Umstellung auf die eigenen Aufgaben
-      app.state = AH.aufgaben.nachtragen(AH.aufgaben.meineEinsetzen(r.state, app.heute()));
-      app.hinweis = r.hinweis;
-      if (app.state !== r.state) app.sichere();
-      if (!app.state.willkommen) app.aktuell = 'willkommen';
-      // Während eine Zeit läuft, geht kein Anmeldefenster auf.
-      AH.drive.start({ text: () => AH.speicher.alsText(app.state), ruhig: () => app.aktuell === 'timer' });
-      // Zurück in der App: nur neu zeichnen, wenn ein neuer Tag begonnen hat, sonst ginge Getipptes verloren.
-      // Der Jetzt-Bildschirm hat nichts Getipptes und wird immer aufgefrischt, damit Füttern und
-      // Abendrunde erscheinen, sobald ihre Tageszeit beginnt.
+      app.lade(true);
+      // Das Widget „Schwerer Tag“ öffnet die App mit #schwer.
+      if (root.location.hash === '#schwer') {
+        app.schwerEin();
+        try { root.history.replaceState(null, '', root.location.pathname + root.location.search); } catch (e) { /* bleibt stehen */ }
+      }
+      app.marke = app.zeitMarke();
+      document.getElementById('app').addEventListener('click', app.klickRuhe, true);
+      // Zurück in der App: Widgets können den Zustand geändert haben.
       document.addEventListener('visibilitychange', () => {
-        if (!document.hidden && (app.tagPruefen() || app.aktuell === 'jetzt')) app.zeichne();
+        if (!document.hidden) app.auffrischen();
       });
-      let stundeZuletzt = app.stunde();
+      // Läuft die App über den Tageswechsel oder über 20:15 hinweg, frisch zeichnen.
       setInterval(() => {
-        const stunde = app.stunde();
-        if (stunde === stundeZuletzt) return;
-        stundeZuletzt = stunde;
-        if (app.aktuell === 'jetzt' && !document.querySelector('.schleier')) app.zeichne();
+        if (app.zeitMarke() !== app.marke) app.auffrischen();
       }, 60000);
-      // Vor jedem Tippen: erst der Tageswechsel, dann die Aktion. Ein zweites Tippen direkt nach dem
-      // Neuzeichnen landet auf einem anderen Knopf als gemeint und wird verschluckt.
-      document.addEventListener('click', e => {
-        if (e.isTrusted && Date.now() - (app.gezeichnetUm || 0) < 250) {
-          e.stopPropagation();
-          e.preventDefault();
-          return;
-        }
-        app.tagPruefen();
-        AH.drive.beimTipp();
-      }, true);
       app.zeichne();
+    },
+
+    // Schwerer-Tag-Modus einschalten und als Bildschirm wählen; zeichnen tut der Aufrufer.
+    // Wie bei setze: ein offenes „Rückgängig“ schließt (es würde sonst den Modus wieder ausschalten).
+    schwerEin() {
+      app.leisteZu();
+      app.state = AH.schwer.ein(app.state, app.jetzt());
+      app.sichere();
+      app.aktuell = 'schwer';
+    },
+
+    // Aus der Android-Hülle: Das Widget „Schwerer Tag“ hat die schon laufende App geöffnet
+    // (dort gibt es keinen neuen Start mit #schwer). Erst neu laden, die Widgets können etwas geändert haben.
+    schwerOeffnen() {
+      app.lade(false);
+      app.schwerEin();
+      app.marke = app.zeitMarke();
+      app.zeichne();
+    },
+
+    // Tag und Abend: wechselt eins davon, sieht die App anders aus.
+    zeitMarke() {
+      return AH.zeit.tagUndStunde(app.jetzt()).tag + '|' + AH.zeit.istAbend(app.jetzt());
+    },
+
+    // Neu laden und nur dann neu zeichnen, wenn sich der Zustand oder die Zeit-Marke geändert hat.
+    // Sonst ginge etwa die Sicherung ins Leere, die man gerade in der Dateiauswahl des Systems gewählt hat
+    // (die Auswahl verdeckt die App, beim Zurückkommen käme ein neues Formular).
+    auffrischen() {
+      const vorher = JSON.stringify(app.state) + '|' + app.marke;
+      app.lade(false);
+      app.marke = app.zeitMarke();
+      if (JSON.stringify(app.state) + '|' + app.marke !== vorher) app.zeichne();
     },
   };
   AH.app = app;
