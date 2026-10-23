@@ -8,6 +8,8 @@
   // Die alte App (v1) lag nur im Browser; ihr Schlüssel wird nur gelesen, nie geändert oder gelöscht.
   const ALT_SCHLUESSEL = 'alltagshelfer.v1';
   const ALT_GEFRAGT_SCHLUESSEL = ALT_SCHLUESSEL + '.gefragt'; // „Übernehmen“ oder „Nein danke“ gewählt
+  // Farben einer Gewohnheit (Feld `farbe`, freiwillig); ohne eigene Wahl entscheidet die Position (js/eintraege.js).
+  const FARBEN = ['rosa', 'blau', 'tuerkis', 'orange', 'lila', 'gelb'];
 
   function leer() {
     return {
@@ -29,8 +31,12 @@
 
   const mussOk = e => istObjekt(e) && istText(e.id) && istText(e.text) && (e.frist === null || istTag(e.frist)) && istText(e.angelegt);
   const zielOk = e => istObjekt(e) && istText(e.id) && istText(e.text) && istText(e.woche);
+  // Symbol (freiwillig): ein kurzer Text, meist ein Emoji, auch mit Variationszeichen. Ein unbekanntes Emoji ist kein Fehler.
+  const istSymbol = x => istText(x) && x.length >= 1 && x.length <= 8;
+  const hat = (obj, feld) => Object.prototype.hasOwnProperty.call(obj, feld);
   const gewohnheitOk = e => istObjekt(e) && istText(e.id) && istText(e.name) &&
-    Number.isInteger(e.ziel) && e.ziel >= 1 && e.ziel <= 7 && istText(e.woche) && Number.isInteger(e.anzahl) && e.anzahl >= 0;
+    Number.isInteger(e.ziel) && e.ziel >= 1 && e.ziel <= 7 && istText(e.woche) && Number.isInteger(e.anzahl) && e.anzahl >= 0 &&
+    (!hat(e, 'farbe') || FARBEN.includes(e.farbe)) && (!hat(e, 'symbol') || istSymbol(e.symbol));
   const eingangOk = e => istObjekt(e) && istText(e.id) && istText(e.text) && istText(e.angelegt);
   // Schwerer Tag: ein verbogener Lauf würde bei jedem Zeichnen werfen
   const laufOk = l => istObjekt(l) && Number.isInteger(l.von) && l.von >= 0 && liste(l.offen, istText) && liste(l.einmalVerschoben, istText);
@@ -152,8 +158,8 @@
   }
 
   const api = {
-    SCHLUESSEL, WIDGET_SCHLUESSEL, KAPUTT_SCHLUESSEL, ALT_SCHLUESSEL, ALT_GEFRAGT_SCHLUESSEL,
-    leer, pruefe, neueId, lade, ladeGesichert, speichere, alsSicherung, ausSicherung, altesAnbieten, altesUebernehmen,
+    SCHLUESSEL, WIDGET_SCHLUESSEL, KAPUTT_SCHLUESSEL, ALT_SCHLUESSEL, ALT_GEFRAGT_SCHLUESSEL, FARBEN,
+    leer, istSymbol, pruefe, neueId, lade, ladeGesichert, speichere, alsSicherung, ausSicherung, altesAnbieten, altesUebernehmen,
   };
   root.AH = root.AH || {};
   root.AH.speicher = api;

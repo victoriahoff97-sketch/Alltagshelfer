@@ -80,7 +80,7 @@
 
   function routine(r, name) {
     const liste = app.state.routinen[r];
-    return h('section', { class: 'abschnitt' },
+    return h('section', { class: 'abschnitt karte sek-' + (r === 'abend' ? 'gewohnheiten' : 'muss') },
       h('h2', { class: 'abschnitt-titel abschnitt-titel-text' }, name),
       liste.length > 0
         ? h('ul', { class: 'schritte' }, liste.map((t, i) => schrittZeile(r, i, t, liste.length)))
@@ -149,7 +149,7 @@
       datei.value = ''; // dieselbe Datei lässt sich danach noch einmal wählen
     });
 
-    return h('section', { class: 'abschnitt' },
+    return h('section', { class: 'abschnitt karte sek-ziele' },
       h('h2', { class: 'abschnitt-titel abschnitt-titel-text' }, 'Sicherung'),
       h('div', { class: 'formular-knoepfe sicherung-knoepfe' },
         h('button', { class: 'knopf', type: 'button', onclick: () => speichern(meldung) }, 'Sicherung speichern'),

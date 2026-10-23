@@ -114,7 +114,43 @@
     return el;
   }
 
-  app.bauteile = { textFeld, fristAuswahl, zahlAuswahl, wahlAus };
+  // Name der Farben und Symbole zum Vorlesen (die Chips selbst zeigen nur Farbe bzw. Emoji).
+  const FARB_NAMEN = { rosa: 'Rosa', blau: 'Blau', tuerkis: 'Türkis', orange: 'Orange', lila: 'Lila', gelb: 'Gelb' };
+  const SYMBOL_NAMEN = ['Laufen', 'Wasser', 'Bücher', 'Japan', 'Meditation', 'Zähne', 'Tablette', 'Putzen', 'Hund', 'Katze',
+    'Pflanze', 'Musik', 'Schreiben', 'Apfel', 'Schlafen', 'Stern'];
+
+  // Eine Reihe Chips, genau einer gewählt. start = vorgewählter Wert. el.wahl() gibt den gewählten Wert,
+  // el.geaendert() sagt, ob jemand getippt hat (sonst bleibt die Wahl automatisch und wird nicht gespeichert).
+  function eineAus(beschriftung, werte, start, chip) {
+    let gewaehlt = start;
+    let geaendert = false;
+    const knoepfe = werte.map(w => {
+      const k = chip(w);
+      k.setAttribute('aria-pressed', 'false');
+      k.addEventListener('click', () => { gewaehlt = w; geaendert = true; zeige(); });
+      return k;
+    });
+    const zeige = () => knoepfe.forEach((k, i) => k.setAttribute('aria-pressed', werte[i] === gewaehlt ? 'true' : 'false'));
+    const el = h('div', { class: 'wahl', role: 'group', 'aria-label': beschriftung }, knoepfe);
+    zeige();
+    el.wahl = () => gewaehlt;
+    el.geaendert = () => geaendert;
+    return el;
+  }
+
+  function farbAuswahl(start) {
+    return eineAus('Farbe', AH.speicher.FARBEN, start, f => h('button', {
+      class: 'chip chip-farbe farbe-' + f, type: 'button', 'aria-label': 'Farbe ' + FARB_NAMEN[f],
+    }));
+  }
+
+  function symbolAuswahl(start) {
+    return eineAus('Symbol', AH.eintraege.SYMBOLE, start, sym => h('button', {
+      class: 'chip chip-symbol', type: 'button', 'aria-label': 'Symbol ' + (SYMBOL_NAMEN[AH.eintraege.SYMBOLE.indexOf(sym)] || sym),
+    }, sym));
+  }
+
+  app.bauteile = { textFeld, fristAuswahl, zahlAuswahl, wahlAus, farbAuswahl, symbolAuswahl };
 
   const TITEL = { muss: 'Muss', ziele: 'Diese Woche', gewohnheiten: 'Gewohnheiten' };
   const NEU_TITEL = { muss: 'Neues Muss', ziele: 'Neues Ziel', gewohnheiten: 'Neue Gewohnheit' };
@@ -128,19 +164,22 @@
     } else if (liste === 'gewohnheiten') {
       rechts = h('span', { class: 'zaehlung' }, AH.woche.anzahl(eintrag, heute) + '/' + eintrag.ziel);
     }
-    const name = liste === 'gewohnheiten' ? eintrag.name : eintrag.text;
-    return h('li', { class: 'zeile' },
+    const istGewohnheit = liste === 'gewohnheiten';
+    const name = istGewohnheit ? eintrag.name : eintrag.text;
+    const pos = istGewohnheit ? app.state.gewohnheiten.indexOf(eintrag) : -1;
+    return h('li', { class: 'zeile' + (istGewohnheit ? ' farbe-' + AH.eintraege.farbeVon(eintrag, pos) : '') },
       h('button', {
         class: 'zeile-knopf', type: 'button', 'data-fokus': 'alle:' + liste + ':' + eintrag.id,
         'aria-label': name + (rechts ? ', ' + rechts.textContent : '') + '. Bearbeiten',
         onclick: () => app.zeige('alle', { liste, id: eintrag.id }),
       },
+      istGewohnheit ? h('span', { class: 'zeile-symbol', 'aria-hidden': 'true' }, AH.eintraege.symbolVon(eintrag, pos)) : null,
       h('span', { class: 'zeile-text', title: name }, name),
       rechts));
   }
 
   function abschnitt(liste, eintraege, heute) {
-    return h('section', { class: 'abschnitt' },
+    return h('section', { class: 'abschnitt karte sek-' + liste },
       h('div', { class: 'abschnitt-kopf' },
         h('h2', { class: 'abschnitt-titel abschnitt-titel-text' }, TITEL[liste]),
         h('button', { class: 'klein', type: 'button', 'data-fokus': 'neu:' + liste, 'aria-label': 'Neu: ' + TITEL[liste], onclick: () => app.zeige('alle', { liste, id: null }) }, 'Neu')),
@@ -161,8 +200,9 @@
       abschnitt('gewohnheiten', s.gewohnheiten, heute));
   }
 
-  // Formular zum Anlegen (id = null) oder Bearbeiten.
-  function formular(liste, id) {
+  // Formular zum Anlegen (id = null) oder Bearbeiten. zurueckZu: wohin Speichern und Zurück führen
+  // ('alle', oder 'start', wenn das ＋ der Startseite das Formular geöffnet hat).
+  function formular(liste, id, zurueckZu) {
     const heute = app.heute();
     const alt = id ? app.state[liste].find(e => e.id === id) : null;
     if (id && !alt) return null; // gibt es nicht mehr (etwa von einem Widget geändert)
@@ -171,6 +211,11 @@
     const text = textFeld(istGewohnheit ? 'Name' : 'Text', alt ? (istGewohnheit ? alt.name : alt.text) : '');
     const frist = liste === 'muss' ? fristAuswahl(alt ? wahlAus(alt.frist, heute) : 'ohne') : null;
     const zahl = istGewohnheit ? zahlAuswahl(alt ? alt.ziel : 3) : null;
+    // Vorgewählt: die eigene Wahl oder das, was die Gewohnheit automatisch bekommt
+    const pos = alt ? app.state.gewohnheiten.indexOf(alt) : app.state.gewohnheiten.length;
+    const vorschlag = alt ? AH.eintraege.farbeVon(alt, pos) : AH.eintraege.freieFarbe(app.state.gewohnheiten);
+    const farbe = istGewohnheit ? farbAuswahl(vorschlag) : null;
+    const symbol = istGewohnheit ? symbolAuswahl(AH.eintraege.symbolVon(alt, pos)) : null;
 
     const speichern = () => {
       const t = text.pruefe();
@@ -184,11 +229,14 @@
       } else if (liste === 'ziele') {
         neu = alt ? AH.eintraege.aendere(neu, 'ziele', id, { text: t }) : AH.eintraege.neuZiel(neu, { text: t }, heute);
       } else {
-        const n = zahl.wahl();
-        neu = alt ? AH.eintraege.aendere(neu, 'gewohnheiten', id, { name: t, ziel: n }) : AH.eintraege.neueGewohnheit(neu, { name: t, ziel: n }, heute);
+        const felder = { name: t, ziel: zahl.wahl() };
+        // Farbe und Symbol nur speichern, wenn jemand gewählt hat; sonst bleibt es automatisch
+        if (farbe.geaendert()) felder.farbe = farbe.wahl();
+        if (symbol.geaendert()) felder.symbol = symbol.wahl();
+        neu = alt ? AH.eintraege.aendere(neu, 'gewohnheiten', id, felder) : AH.eintraege.neueGewohnheit(neu, felder, heute);
       }
       app.setze(neu);
-      app.zeige('alle');
+      app.zeige(zurueckZu);
     };
 
     const loeschen = () => {
@@ -200,14 +248,16 @@
 
     text.feld.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); speichern(); } });
 
-    return h('div', { class: 'seite' },
+    return h('div', { class: 'seite sek-' + liste },
       h('header', { class: 'kopf' },
         h('h1', { class: 'datum' }, alt ? BEARBEITEN_TITEL[liste] : NEU_TITEL[liste]),
-        h('button', { class: 'klein', type: 'button', onclick: () => app.zeige('alle') }, 'Zurück')),
-      h('div', { class: 'formular' },
+        h('button', { class: 'klein', type: 'button', onclick: () => app.zeige(zurueckZu) }, 'Zurück')),
+      h('div', { class: 'formular karte' },
         h('label', { class: 'etikett' }, istGewohnheit ? 'Name' : 'Text', text),
         frist ? h('div', { class: 'etikett' }, 'Bis wann?', frist) : null,
         zahl ? h('div', { class: 'etikett' }, 'Wie oft pro Woche?', zahl) : null,
+        farbe ? h('div', { class: 'etikett' }, 'Farbe', farbe) : null,
+        symbol ? h('div', { class: 'etikett' }, 'Symbol', symbol) : null,
         h('div', { class: 'formular-knoepfe' },
           h('button', { class: 'knopf knopf-haupt', type: 'button', onclick: speichern }, 'Speichern'),
           alt ? h('button', { class: 'knopf', type: 'button', onclick: loeschen }, 'Löschen') : null)));
@@ -216,7 +266,7 @@
   app.bildschirme.alle = {
     zeichne(daten) {
       if (daten && TITEL[daten.liste]) {
-        const f = formular(daten.liste, daten.id || null);
+        const f = formular(daten.liste, daten.id || null, daten.zurueck === 'start' ? 'start' : 'alle');
         if (f) return f;
         app.daten = null; // Eintrag ist weg: zurück zur Liste
       }

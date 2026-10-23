@@ -123,12 +123,13 @@
     },
 
     // Zurück-Taste von Android (die Hülle ruft das auf): zur Startseite, aus der Bearbeitung eines Eintrags
-    // erst zur Liste (wie der Knopf „Zurück“ dort). false: nichts zu tun (Startseite oder Schwerer Tag),
+    // erst zur Liste (wie der Knopf „Zurück“ dort), außer das Formular kam vom ＋ der Startseite
+    // (daten.zurueck = 'start'). false: nichts zu tun (Startseite oder Schwerer Tag),
     // dann schließt die Hülle die App wie bisher.
     zurueck() {
       const name = app.welcher();
       if (name === 'start' || name === 'schwer') return false;
-      if (name === 'alle' && app.daten) app.zeige('alle');
+      if (name === 'alle' && app.daten && app.daten.zurueck !== 'start') app.zeige('alle');
       else app.zeige('start');
       return true;
     },

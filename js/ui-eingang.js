@@ -66,16 +66,16 @@
 
     function erste() {
       aktion.replaceChildren(h('div', { class: 'vier' },
-        h('button', { class: 'knopf knopf-gross', type: 'button', onclick: muss }, 'Muss'),
-        h('button', { class: 'knopf knopf-gross', type: 'button', onclick: ziel }, 'Diese Woche'),
-        h('button', { class: 'knopf knopf-gross', type: 'button', onclick: gewohnheit }, 'Gewohnheit'),
+        h('button', { class: 'knopf knopf-gross sek-muss', type: 'button', onclick: muss }, 'Muss'),
+        h('button', { class: 'knopf knopf-gross sek-ziele', type: 'button', onclick: ziel }, 'Diese Woche'),
+        h('button', { class: 'knopf knopf-gross sek-gewohnheiten', type: 'button', onclick: gewohnheit }, 'Gewohnheit'),
         h('button', { class: 'knopf knopf-gross', type: 'button', onclick: weg }, 'Weg')));
     }
     erste();
 
     return h('div', { class: 'seite' }, kopf,
       h('p', { class: 'leer' }, '1 von ' + s.eingang.length),
-      h('div', { class: 'formular' },
+      h('div', { class: 'formular karte' },
         h('label', { class: 'etikett' }, 'Was ist das?', text),
         aktion));
   }

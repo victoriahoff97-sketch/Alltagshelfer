@@ -19,6 +19,7 @@
   // Muss nach Frist sortiert, Schilder und Wochenzählung je Tag neu gerechnet.
   // mehr: es gibt mehr Muss-Aufgaben, als in der Datei stehen (sind alle abgehakt, heißt es „App öffnen“).
   // montag: Wochenschlüssel des Tags; ein +1 im Widget zählt in allen Tagen mit demselben Montag.
+  // woche: je Gewohnheit auch farbe und symbol, fertig aufgelöst (eigene Wahl, sonst nach Position).
   function baue(state, jetzt) {
     const z = zeit();
     const heute = z.tagUndStunde(jetzt).tag;
@@ -32,7 +33,10 @@
         montag: z.montag(tag),
         muss: muss.map(m => ({ id: m.id, text: m.text, schild: fristen().schild(m.frist, tag) })),
         mehr,
-        woche: gewohnheiten.map(g => ({ id: g.id, name: g.name, anzahl: woche().anzahl(g, tag), ziel: g.ziel })),
+        woche: gewohnheiten.map((g, n) => ({
+          id: g.id, name: g.name, anzahl: woche().anzahl(g, tag), ziel: g.ziel,
+          farbe: eintraege().farbeVon(g, n), symbol: eintraege().symbolVon(g, n),
+        })),
       };
     }
     return { tage };
